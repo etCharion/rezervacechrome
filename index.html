@@ -1,0 +1,149 @@
+<!DOCTYPE html>
+<html lang="cs">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Rezervace Chromebooků a učeben</title>
+    <!-- React + ReactDOM z CDN -->
+    <script crossorigin src="https://unpkg.com/react@18/umd/react.development.js"></script>
+    <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
+    <!-- Babel kvůli JSX -->
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+    <!-- date-fns -->
+    <script src="https://cdn.jsdelivr.net/npm/date-fns@2.30.0/dist/date-fns.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/date-fns@2.30.0/locale/cs/index.js"></script>
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+  </head>
+  <body class="bg-gradient-to-br from-indigo-100 via-fuchsia-100 to-sky-100">
+    <div id="root"></div>
+    <script type="text/babel">
+      const { useState, useEffect, useMemo, useRef } = React;
+      const { format, startOfMonth, endOfMonth, eachDayOfInterval, getISODay, addMonths, subMonths, isSameDay, parseISO, isWithinInterval } = dateFns;
+      const cs = dateFnsLocaleCs;
+
+      const PERIODS = ["0", "1", "2", "3", "4", "5", "6", "7", "8"];
+      const STORAGE_KEY = "rezervace-chromebooku-state-v1";
+      function uid(prefix = "id") {
+        return `${prefix}_${Math.random().toString(36).slice(2, 10)}`;
+      }
+      function iso(d) {
+        if (typeof d === "string") return d.slice(0, 10);
+        return format(d, "yyyy-MM-dd");
+      }
+
+      const defaultState = {
+        teachers: [ { id: uid("t"), name: "Nováková" }, { id: uid("t"), name: "Dvořák" } ],
+        rooms: [
+          { id: uid("r"), name: "IT učebna", floor: "přízemí" },
+          { id: uid("r"), name: "Vozík 1", floor: "1. patro" },
+        ],
+        reservations: {},
+        recurring: [],
+      };
+
+      function loadState() {
+        try { return JSON.parse(localStorage.getItem(STORAGE_KEY)) || defaultState; } catch { return defaultState; }
+      }
+      function saveState(state) { localStorage.setItem(STORAGE_KEY, JSON.stringify(state)); }
+
+      function ReservationDialog({ open, onClose, onSave, teachers, initial }) {
+        const [teacherId, setTeacherId] = useState(initial?.teacherId || teachers[0]?.id || "");
+        if (!open) return null;
+        return (
+          <div className="fixed inset-0 flex items-center justify-center bg-black/30">
+            <div className="bg-white rounded-xl shadow-xl w-full max-w-sm p-4">
+              <h3 className="text-lg font-semibold mb-2">{initial ? "Upravit" : "Nová"} rezervace</h3>
+              <select className="w-full border rounded p-2 mb-2" value={teacherId} onChange={e=>setTeacherId(e.target.value)}>
+                {teachers.map(t=><option key={t.id} value={t.id}>{t.name}</option>)}
+              </select>
+              <div className="flex justify-end gap-2">
+                <button onClick={onClose} className="px-3 py-1 border rounded">Zrušit</button>
+                <button onClick={()=>{ onSave({teacherId}); onClose(); }} className="px-3 py-1 bg-black text-white rounded">Uložit</button>
+              </div>
+            </div>
+          </div>
+        );
+      }
+
+      function App() {
+        const [state, setState] = useState(loadState);
+        const [monthCursor, setMonthCursor] = useState(new Date());
+        const [selectedDate, setSelectedDate] = useState(new Date());
+        const [dialogCfg, setDialogCfg] = useState(null);
+        useEffect(()=>saveState(state), [state]);
+        const daysInMonth = eachDayOfInterval({start:startOfMonth(monthCursor), end:endOfMonth(monthCursor)});
+        const selectedIso = iso(selectedDate);
+
+        function upsertReservation(dateStr, roomId, period, payload) {
+          setState(s=>{
+            const next = {...s, reservations:{...s.reservations}};
+            const day = {...(next.reservations[dateStr]||{})};
+            day[roomId] = {...(day[roomId]||{}), [period]: payload};
+            next.reservations[dateStr] = day; return next;
+          });
+        }
+        function clearReservation(dateStr, roomId, period) {
+          setState(s=>{
+            const next = {...s, reservations:{...s.reservations}};
+            const day = {...(next.reservations[dateStr]||{})};
+            delete day[roomId]?.[period];
+            next.reservations[dateStr] = day; return next;
+          });
+        }
+
+        return (
+          <div className="p-4 max-w-6xl mx-auto grid gap-4">
+            <header className="flex justify-between items-center">
+              <h1 className="text-xl font-bold">Rezervace Chromebooků</h1>
+              <div className="flex gap-2">
+                <button onClick={()=>setMonthCursor(subMonths(monthCursor,1))} className="px-2 border rounded">&lt;</button>
+                <button onClick={()=>setMonthCursor(new Date())} className="px-2 border rounded">Dnes</button>
+                <button onClick={()=>setMonthCursor(addMonths(monthCursor,1))} className="px-2 border rounded">&gt;</button>
+              </div>
+            </header>
+
+            <div className="grid grid-cols-7 gap-2">
+              {daysInMonth.map(d=>{
+                const isSel=isSameDay(d,selectedDate);
+                return <button key={d} onClick={()=>setSelectedDate(d)} className={`h-16 rounded border ${isSel?"bg-fuchsia-200":"bg-white"}`}>{format(d,"d.")}</button>
+              })}
+            </div>
+
+            <div className="overflow-auto">
+              <table className="w-full text-sm border">
+                <thead>
+                  <tr><th className="p-2 text-left">Učebna</th>{PERIODS.map(p=><th key={p}>{p}. hod.</th>)}</tr>
+                </thead>
+                <tbody>
+                  {state.rooms.map(room=>(
+                    <tr key={room.id}>
+                      <td className="p-2 font-medium">{room.name}<div className="text-xs">{room.floor}</div></td>
+                      {PERIODS.map(p=>{
+                        const cell=state.reservations[selectedIso]?.[room.id]?.[p];
+                        return <td key={p} className="border p-1">
+                          {cell?
+                            <div>
+                              {state.teachers.find(t=>t.id===cell.teacherId)?.name}
+                              <button onClick={()=>clearReservation(selectedIso,room.id,p)} className="block text-xs text-red-500">Smazat</button>
+                            </div>
+                          :
+                            <button onClick={()=>setDialogCfg({dateIso:selectedIso,roomId:room.id,period:p})} className="text-xs text-gray-500">+ Přidat</button>}
+                        </td>
+                      })}
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+
+            <ReservationDialog open={!!dialogCfg} onClose={()=>setDialogCfg(null)} teachers={state.teachers} initial={null}
+              onSave={(payload)=>{ upsertReservation(dialogCfg.dateIso, dialogCfg.roomId, dialogCfg.period, payload); }}/>
+          </div>
+        );
+      }
+
+      ReactDOM.createRoot(document.getElementById("root")).render(<App/>);
+    </script>
+  </body>
+</html>
