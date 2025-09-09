@@ -20,26 +20,28 @@
       const parseISO    = (s) => { const [y,m,dd] = s.split('-').map(Number); return new Date(y, m-1, dd); };
       const addDays     = (d,n)=>{ const x=new Date(d); x.setDate(x.getDate()+n); return x; };
       const startOfWeek = (d)=>{ const iso = ((d.getDay()||7)); return addDays(new Date(d.getFullYear(),d.getMonth(),d.getDate()), -(iso-1)); };// Po
-      const endOfWeek   = (d)=> addDays(startOfWeek(d), 6);
+      const addWeeks    = (d,n)=> addDays(d, n*7);
       const startOfMonth= (d)=> new Date(d.getFullYear(), d.getMonth(), 1);
       const endOfMonth  = (d)=> new Date(d.getFullYear(), d.getMonth()+1, 0);
       const addMonths   = (d,n)=> new Date(d.getFullYear(), d.getMonth()+n, d.getDate());
-      const subMonths   = (d,n)=> addMonths(d, -n);
       const isSameDay   = (a,b)=> a.getFullYear()===b.getFullYear() && a.getMonth()===b.getMonth() && a.getDate()===b.getDate();
       const getISODay   = (d)=> { const g = d.getDay(); return g===0?7:g; }; // Po=1 ... Ne=7
-      const eachDayOfInterval = ({start, end}) => { const days=[]; let cur=new Date(start); while(cur<=end){ days.push(new Date(cur)); cur.setDate(cur.getDate()+1);} return days; };
       const fullDateCz  = (d)=> d.toLocaleDateString('cs-CZ',{ weekday:'long', day:'numeric', month:'long', year:'numeric' });
       const shortDateCz = (d)=> d.toLocaleDateString('cs-CZ',{ day:'numeric', month:'numeric' });
 
       // ====== Aplikace ======
-      const { useState, useEffect, useMemo } = React;
+      const { useState, useEffect, useMemo, useRef } = React;
       const PERIODS = ["0","1","2","3","4","5","6","7","8"]; // uprav dle potřeby
       const STORAGE_KEY = "rezervace-chromebooku-state-v1";
       const uid = (p="id") => `${p}_${Math.random().toString(36).slice(2,10)}`;
 
       const defaultState = {
         teachers:[{id:uid('t'), name:'Nováková'}, {id:uid('t'), name:'Dvořák'}],
-        rooms:[{id:uid('r'), name:'IT učebna', floor:'přízemí'},{id:uid('r'), name:'Vozík 1', floor:'1. patro'},{id:uid('r'), name:'Druhé patro', floor:'2. patro'}],
+        rooms:[
+          {id:uid('r'), name:'IT učebna', floor:'přízemí', code:'IT'},
+          {id:uid('r'), name:'Vozík 1', floor:'1. patro', code:'V1'},
+          {id:uid('r'), name:'Druhé patro', floor:'2. patro', code:'2P'},
+        ],
         reservations:{}, // { 'YYYY-MM-DD': { [roomId]: { [period]: {teacherId, pieces?, note?} } } }
         recurring:[],    // { id, weekday(1-7), roomId, period, teacherId, pieces?, note?, startISO, endISO? }
       };
@@ -94,6 +96,7 @@
         const [selectedDate, setSelectedDate] = useState(new Date());
         const [dialog, setDialog] = useState(null); // {dateIso, roomId, period, initial?}
         const [showSettings, setShowSettings] = useState(false);
+        const datePickerRef = useRef(null);
         useEffect(()=>saveState(state), [state]);
 
         const selectedIso = toISO(selectedDate);
@@ -121,32 +124,33 @@
           return [0,1,2,3,4].map(off=> addDays(start, off));
         }, [selectedDate]);
 
-        function daySummary(date){
+        // Vytvoř detailní seznam náhledů: [{period, code, recurring}]
+        function daySummaryDetailed(date){
           const iso = toISO(date);
-          // Aplikuj i opakované pro přehled
-          const plan = {};
           const weekday = getISODay(date);
+          const items = [];
           const direct = state.reservations[iso] || {};
-          Object.keys(direct).forEach(rid=>{ plan[rid] = {...plan[rid], ...direct[rid]}; });
+          Object.entries(direct).forEach(([roomId, slots])=>{
+            Object.keys(slots).forEach(period=>{
+              items.push({period, code: (state.rooms.find(r=>r.id===roomId)?.code||"?"), recurring:false});
+            });
+          });
           state.recurring.forEach(r=>{
             if(r.weekday!==weekday) return;
             const startOk = !r.startISO || parseISO(iso) >= parseISO(r.startISO);
             const endOk   = !r.endISO   || parseISO(iso) <= parseISO(r.endISO);
             if(!startOk || !endOk) return;
-            plan[r.roomId] ||= {};
-            plan[r.roomId][r.period] = plan[r.roomId][r.period] || { recurringId:r.id };
+            items.push({period:r.period, code:(state.rooms.find(x=>x.id===r.roomId)?.code||"?"), recurring:true});
           });
-          // vytvoř seznam period, kde je cokoli
-          const set = new Set();
-          Object.values(plan).forEach(roomSlots=>{ Object.keys(roomSlots||{}).forEach(p=> set.add(p)); });
-          const arr = Array.from(set).sort((a,b)=> Number(a)-Number(b));
-          return arr; // např. ["1","3","5"]
+          // seřadit nejdřív podle period a pak podle kódu
+          items.sort((a,b)=> Number(a.period)-Number(b.period) || a.code.localeCompare(b.code));
+          return items;
         }
 
         // CRUD: učitelé + učebny
         const addTeacher = (name)=> setState(s=>({...s, teachers:[...s.teachers, {id:uid('t'), name}]}));
         const removeTeacher = (id)=> setState(s=>({...s, teachers:s.teachers.filter(t=>t.id!==id)}));
-        const addRoom = (name,floor)=> setState(s=>({...s, rooms:[...s.rooms, {id:uid('r'), name, floor}]}));
+        const addRoom = (name,floor,code)=> setState(s=>({...s, rooms:[...s.rooms, {id:uid('r'), name, floor, code:code||name.slice(0,2).toUpperCase()}]}));
         const removeRoom = (id)=> setState(s=>({...s, rooms:s.rooms.filter(r=>r.id!==id)}));
 
         // CRUD: rezervace
@@ -175,39 +179,66 @@
 
         // Form inputs
         const [newTeacher, setNewTeacher] = useState("");
-        const [newRoom, setNewRoom] = useState({name:"", floor:""});
+        const [newRoom, setNewRoom] = useState({name:"", floor:"", code:""});
+
+        // --- Pomocné obsluhy ---
+        const openDatePicker = ()=> datePickerRef.current && datePickerRef.current.showPicker ? datePickerRef.current.showPicker() : datePickerRef.current.click();
+        const onPickDate = (e)=>{ const v=e.target.value; if(v){ setSelectedDate(parseISO(v)); } };
 
         return (
           <div className="p-4 max-w-7xl mx-auto grid gap-4">
             {/* Horní lišta */}
             <header className="flex items-center justify-between">
               <h1 className="text-2xl font-bold">Rezervace Chromebooků a učeben</h1>
-              <button onClick={()=>setShowSettings(s=>!s)} className="px-3 py-2 rounded-xl border bg-white">{showSettings? 'Skrýt nastavení':'Nastavení'}</button>
+              <div className="flex items-center gap-2">
+                <button onClick={()=>setSelectedDate(addWeeks(selectedDate,-1))} className="px-3 py-2 rounded-xl border bg-white">◀ Týden</button>
+                <button onClick={()=>setSelectedDate(new Date())} className="px-3 py-2 rounded-xl border bg-white">Dnes</button>
+                <button onClick={()=>setSelectedDate(addWeeks(selectedDate,1))} className="px-3 py-2 rounded-xl border bg-white">Týden ▶</button>
+              </div>
             </header>
 
-            {/* Pracovní týden (Po–Pá) s přehledem rezervací */}
+            {/* Pracovní týden (Po–Pá) s přehledem rezervací + políčko s kalendářem */}
             <section className="bg-white/80 rounded-2xl p-4">
-              <div className="grid grid-cols-5 text-center text-xs font-medium text-gray-600 mb-2">
-                {['Po','Út','St','Čt','Pá'].map((n,i)=> <div key={i} className="py-1">{n}</div>)}
+              <div className="grid grid-cols-6 text-center text-xs font-medium text-gray-600 mb-2">
+                {['Po','Út','St','Čt','Pá','⏷'].map((n,i)=> <div key={i} className="py-1">{i<5?n:' '}</div>)}
               </div>
-              <div className="grid grid-cols-5 gap-2">
+              <div className="grid grid-cols-6 gap-2">
                 {workweek.map(d=>{
                   const sel = isSameDay(d, selectedDate);
-                  const summary = daySummary(d); // např. ["1","3"]
+                  const items = daySummaryDetailed(d); // [{period,code,recurring}]
                   return (
                     <button key={d.toISOString()} onClick={()=>setSelectedDate(d)}
-                      className={`h-24 rounded-2xl border p-2 text-left bg-white hover:shadow ${sel? 'ring-2 ring-fuchsia-400':''}`}>
+                      className={`h-28 rounded-2xl border p-2 text-left bg-white hover:shadow ${sel? 'ring-2 ring-fuchsia-400':''}`}>
                       <div className="text-sm font-semibold">{shortDateCz(d)}</div>
                       <div className="mt-1 flex flex-wrap gap-1">
-                        {summary.length===0 ? (
+                        {items.length===0 ? (
                           <Badge className="bg-green-100 border border-green-400 text-green-800">volno</Badge>
                         ) : (
-                          summary.map(p=> <Badge key={p} className="bg-red-100 border border-red-400 text-red-800">{p}. hod.</Badge>)
+                          items.map((it,idx)=> (
+                            <Badge key={idx} className={`border ${it.recurring? 'bg-red-100 border-red-400 text-red-800':'bg-red-100 border-red-400 text-red-800'}`}>
+                              {it.period}. {it.code}
+                            </Badge>
+                          ))
                         )}
                       </div>
                     </button>
                   );
                 })}
+
+                {/* Další "den" s ikonou kalendáře pro výběr měsíce/roku */}
+                <button onClick={openDatePicker} className="h-28 rounded-2xl border p-2 text-center bg-white hover:shadow flex items-center justify-center">
+                  <div>
+                    <div className="text-2xl">📅</div>
+                    <div className="text-xs text-gray-600">Vybrat datum</div>
+                  </div>
+                </button>
+                <input ref={datePickerRef} type="date" className="hidden" value={selectedIso} onChange={onPickDate} />
+              </div>
+              <div className="mt-2 flex justify-end gap-2 text-sm">
+                <button onClick={()=>setSelectedDate(addMonths(selectedDate,-1))} className="px-2 py-1 border rounded bg-white">◀ Měsíc</button>
+                <button onClick={()=>setSelectedDate(addMonths(selectedDate,1))}  className="px-2 py-1 border rounded bg-white">Měsíc ▶</button>
+                <button onClick={()=>setSelectedDate(new Date(selectedDate.getFullYear()-1, selectedDate.getMonth(), selectedDate.getDate()))} className="px-2 py-1 border rounded bg-white">◀ Rok</button>
+                <button onClick={()=>setSelectedDate(new Date(selectedDate.getFullYear()+1, selectedDate.getMonth(), selectedDate.getDate()))} className="px-2 py-1 border rounded bg-white">Rok ▶</button>
               </div>
             </section>
 
@@ -226,7 +257,7 @@
                     {state.rooms.map(room=> (
                       <tr key={room.id} className="odd:bg-white/60 even:bg-white/40">
                         <th className="text-left p-2 sticky left-0 bg-white/80 backdrop-blur z-10">
-                          <div className="font-medium">{room.name}</div>
+                          <div className="font-medium">{room.name} <span className="text-xs ml-1 px-1.5 py-0.5 rounded bg-gray-100 border">{room.code}</span></div>
                           <div className="text-xs text-gray-600">{room.floor}</div>
                         </th>
                         {PERIODS.map(p=>{
@@ -294,16 +325,17 @@
                 {/* Učebny */}
                 <div>
                   <h2 className="text-lg font-semibold mb-2">Učebny / Vozíky</h2>
-                  <div className="grid grid-cols-5 gap-2 mb-3">
+                  <div className="grid grid-cols-6 gap-2 mb-3">
                     <input className="col-span-3 border rounded-xl px-3 py-2" placeholder="Název" value={newRoom.name} onChange={e=>setNewRoom(v=>({...v, name:e.target.value}))} />
                     <input className="col-span-1 border rounded-xl px-3 py-2" placeholder="Patro" value={newRoom.floor} onChange={e=>setNewRoom(v=>({...v, floor:e.target.value}))} />
-                    <button className="col-span-1 px-3 py-2 rounded-xl bg-black text-white" onClick={()=>{ if(newRoom.name.trim()) { addRoom(newRoom.name.trim(), newRoom.floor.trim()); setNewRoom({name:"", floor:""}); } }}>Přidat</button>
+                    <input className="col-span-1 border rounded-xl px-3 py-2" placeholder="Zkratka" value={newRoom.code} onChange={e=>setNewRoom(v=>({...v, code:e.target.value}))} />
+                    <button className="col-span-1 px-3 py-2 rounded-xl bg-black text-white" onClick={()=>{ if(newRoom.name.trim()) { addRoom(newRoom.name.trim(), newRoom.floor.trim(), newRoom.code.trim()); setNewRoom({name:"", floor:"", code:""}); } }}>Přidat</button>
                   </div>
                   <div className="flex flex-col gap-2">
                     {state.rooms.map(r=> (
                       <div key={r.id} className="flex items-center justify-between rounded-xl border bg-white/70 px-3 py-2">
                         <div>
-                          <div className="font-medium">{r.name}</div>
+                          <div className="font-medium">{r.name} <span className="text-xs ml-1 px-1.5 py-0.5 rounded bg-gray-100 border">{r.code}</span></div>
                           <div className="text-xs text-gray-600">{r.floor}</div>
                         </div>
                         <button className="p-2 rounded-lg hover:bg-gray-100" onClick={()=>removeRoom(r.id)} title="Odebrat">✕</button>
