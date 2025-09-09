@@ -4,146 +4,298 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Rezervace Chromebooků a učeben</title>
-    <!-- React + ReactDOM z CDN -->
+    <!-- React + ReactDOM z CDN (bez bundleru) -->
     <script crossorigin src="https://unpkg.com/react@18/umd/react.development.js"></script>
     <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
     <!-- Babel kvůli JSX -->
     <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
-    <!-- date-fns -->
-    <script src="https://cdn.jsdelivr.net/npm/date-fns@2.30.0/dist/date-fns.min.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/date-fns@2.30.0/locale/cs/index.js"></script>
-    <!-- Tailwind CSS -->
+    <!-- Tailwind CSS (CDN) -->
     <script src="https://cdn.tailwindcss.com"></script>
   </head>
   <body class="bg-gradient-to-br from-indigo-100 via-fuchsia-100 to-sky-100">
     <div id="root"></div>
     <script type="text/babel">
-      const { useState, useEffect, useMemo, useRef } = React;
-      const { format, startOfMonth, endOfMonth, eachDayOfInterval, getISODay, addMonths, subMonths, isSameDay, parseISO, isWithinInterval } = dateFns;
-      const cs = dateFnsLocaleCs;
+      // ====== Malé utilitky místo date-fns (aby to fungovalo i bez CDN) ======
+      const toISO = (d) => new Date(d.getFullYear(), d.getMonth(), d.getDate()).toISOString().slice(0,10);
+      const parseISO = (s) => { const [y,m,dd] = s.split('-').map(Number); return new Date(y, m-1, dd); };
+      const startOfMonth = (d) => new Date(d.getFullYear(), d.getMonth(), 1);
+      const endOfMonth   = (d) => new Date(d.getFullYear(), d.getMonth()+1, 0);
+      const addMonths    = (d, n) => new Date(d.getFullYear(), d.getMonth()+n, d.getDate());
+      const subMonths    = (d, n) => addMonths(d, -n);
+      const isSameDay    = (a,b) => a.getFullYear()===b.getFullYear() && a.getMonth()===b.getMonth() && a.getDate()===b.getDate();
+      const getISODay    = (d) => { const g = d.getDay(); return g===0?7:g; }; // Po=1 ... Ne=7
+      const eachDayOfInterval = ({start, end}) => { const days=[]; let cur=new Date(start); while(cur<=end){ days.push(new Date(cur)); cur.setDate(cur.getDate()+1);} return days; };
+      const dayLabel = (d) => `${d.getDate()}.`;
+      const fullDateCz = (d) => d.toLocaleDateString('cs-CZ', { weekday:'long', day:'numeric', month:'long', year:'numeric' });
 
-      const PERIODS = ["0", "1", "2", "3", "4", "5", "6", "7", "8"];
+      // ====== Aplikace ======
+      const { useState, useEffect } = React;
+      const PERIODS = ["0","1","2","3","4","5","6","7","8"]; // uprav dle potřeby
       const STORAGE_KEY = "rezervace-chromebooku-state-v1";
-      function uid(prefix = "id") {
-        return `${prefix}_${Math.random().toString(36).slice(2, 10)}`;
-      }
-      function iso(d) {
-        if (typeof d === "string") return d.slice(0, 10);
-        return format(d, "yyyy-MM-dd");
-      }
+      const uid = (p="id") => `${p}_${Math.random().toString(36).slice(2,10)}`;
 
       const defaultState = {
-        teachers: [ { id: uid("t"), name: "Nováková" }, { id: uid("t"), name: "Dvořák" } ],
-        rooms: [
-          { id: uid("r"), name: "IT učebna", floor: "přízemí" },
-          { id: uid("r"), name: "Vozík 1", floor: "1. patro" },
-        ],
-        reservations: {},
-        recurring: [],
+        teachers:[{id:uid('t'), name:'Nováková'}, {id:uid('t'), name:'Dvořák'}],
+        rooms:[{id:uid('r'), name:'IT učebna', floor:'přízemí'},{id:uid('r'), name:'Vozík 1', floor:'1. patro'}],
+        reservations:{}, // { 'YYYY-MM-DD': { [roomId]: { [period]: {teacherId, pieces?, note?} } } }
+        recurring:[],    // { id, weekday(1-7), roomId, period, teacherId, pieces?, note?, startISO, endISO? }
       };
+      const loadState = () => { try{ return JSON.parse(localStorage.getItem(STORAGE_KEY)) || defaultState; }catch{ return defaultState; } };
+      const saveState = (s) => localStorage.setItem(STORAGE_KEY, JSON.stringify(s));
 
-      function loadState() {
-        try { return JSON.parse(localStorage.getItem(STORAGE_KEY)) || defaultState; } catch { return defaultState; }
-      }
-      function saveState(state) { localStorage.setItem(STORAGE_KEY, JSON.stringify(state)); }
-
-      function ReservationDialog({ open, onClose, onSave, teachers, initial }) {
-        const [teacherId, setTeacherId] = useState(initial?.teacherId || teachers[0]?.id || "");
-        if (!open) return null;
+      function ReservationDialog({open, onClose, onSave, teachers, initial}){
+        const [teacherId, setTeacherId] = React.useState(initial?.teacherId || (teachers[0]?.id||""));
+        const [pieces, setPieces] = React.useState(initial?.pieces || "");
+        const [note, setNote]     = React.useState(initial?.note || "");
+        const [repeat, setRepeat] = React.useState(false);
+        if(!open) return null;
         return (
-          <div className="fixed inset-0 flex items-center justify-center bg-black/30">
-            <div className="bg-white rounded-xl shadow-xl w-full max-w-sm p-4">
-              <h3 className="text-lg font-semibold mb-2">{initial ? "Upravit" : "Nová"} rezervace</h3>
-              <select className="w-full border rounded p-2 mb-2" value={teacherId} onChange={e=>setTeacherId(e.target.value)}>
-                {teachers.map(t=><option key={t.id} value={t.id}>{t.name}</option>)}
-              </select>
-              <div className="flex justify-end gap-2">
-                <button onClick={onClose} className="px-3 py-1 border rounded">Zrušit</button>
-                <button onClick={()=>{ onSave({teacherId}); onClose(); }} className="px-3 py-1 bg-black text-white rounded">Uložit</button>
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30">
+            <div className="bg-white rounded-2xl shadow-xl w-full max-w-md p-4">
+              <div className="flex items-center justify-between mb-3">
+                <h3 className="text-lg font-semibold">{initial? 'Upravit rezervaci':'Nová rezervace'}</h3>
+                <button onClick={onClose} className="p-2 rounded-full hover:bg-gray-100">✕</button>
+              </div>
+              <label className="block text-sm mb-2">Učitel/ka
+                <select className="w-full border rounded-xl px-3 py-2 mt-1" value={teacherId} onChange={e=>setTeacherId(e.target.value)}>
+                  {teachers.map(t=> <option key={t.id} value={t.id}>{t.name}</option>)}
+                </select>
+              </label>
+              <div className="grid grid-cols-2 gap-2">
+                <label className="block text-sm">Kusů (volit.)
+                  <input className="w-full border rounded-xl px-3 py-2 mt-1" type="number" min="1" value={pieces} onChange={e=>setPieces(e.target.value)} />
+                </label>
+                <label className="block text-sm">Poznámka (volit.)
+                  <input className="w-full border rounded-xl px-3 py-2 mt-1" value={note} onChange={e=>setNote(e.target.value)} />
+                </label>
+              </div>
+              <label className="inline-flex items-center gap-2 text-sm mt-3">
+                <input type="checkbox" className="scale-110" checked={repeat} onChange={e=>setRepeat(e.target.checked)} />
+                Opakovat každý týden
+              </label>
+              <div className="flex justify-end gap-2 mt-4">
+                <button onClick={onClose} className="px-3 py-2 rounded-xl border">Zrušit</button>
+                <button onClick={()=>{ onSave({teacherId, pieces:pieces?Number(pieces):undefined, note, repeat}); onClose(); }} className="px-3 py-2 rounded-xl bg-black text-white">Uložit</button>
               </div>
             </div>
           </div>
         );
       }
 
-      function App() {
+      function App(){
         const [state, setState] = useState(loadState);
         const [monthCursor, setMonthCursor] = useState(new Date());
         const [selectedDate, setSelectedDate] = useState(new Date());
-        const [dialogCfg, setDialogCfg] = useState(null);
+        const [dialog, setDialog] = useState(null); // {dateIso, roomId, period, initial?}
         useEffect(()=>saveState(state), [state]);
-        const daysInMonth = eachDayOfInterval({start:startOfMonth(monthCursor), end:endOfMonth(monthCursor)});
-        const selectedIso = iso(selectedDate);
 
-        function upsertReservation(dateStr, roomId, period, payload) {
+        const daysInMonth = eachDayOfInterval({ start: startOfMonth(monthCursor), end: endOfMonth(monthCursor) });
+        const selectedIso = toISO(selectedDate);
+
+        // Aplikovat opakované rezervace pro daný den
+        const effectivePlan = React.useMemo(()=>{
+          const plan = JSON.parse(JSON.stringify(state.reservations[selectedIso] || {}));
+          const weekday = getISODay(selectedDate);
+          state.recurring.forEach(r=>{
+            if(r.weekday!==weekday) return;
+            const startOk = !r.startISO || parseISO(selectedIso) >= parseISO(r.startISO);
+            const endOk   = !r.endISO   || parseISO(selectedIso) <= parseISO(r.endISO);
+            if(!startOk || !endOk) return;
+            plan[r.roomId] ||= {};
+            if(!plan[r.roomId][r.period]){
+              plan[r.roomId][r.period] = { teacherId:r.teacherId, pieces:r.pieces, note:r.note, recurringId:r.id };
+            }
+          });
+          return plan;
+        }, [state, selectedIso, selectedDate]);
+
+        // CRUD: učitelé + učebny
+        const addTeacher = (name)=> setState(s=>({...s, teachers:[...s.teachers, {id:uid('t'), name}]}));
+        const removeTeacher = (id)=> setState(s=>({...s, teachers:s.teachers.filter(t=>t.id!==id)}));
+        const addRoom = (name,floor)=> setState(s=>({...s, rooms:[...s.rooms, {id:uid('r'), name, floor}]}));
+        const removeRoom = (id)=> setState(s=>({...s, rooms:s.rooms.filter(r=>r.id!==id)}));
+
+        // CRUD: rezervace
+        function upsertReservation(dateIso, roomId, period, payload){
           setState(s=>{
             const next = {...s, reservations:{...s.reservations}};
-            const day = {...(next.reservations[dateStr]||{})};
-            day[roomId] = {...(day[roomId]||{}), [period]: payload};
-            next.reservations[dateStr] = day; return next;
+            const day = JSON.parse(JSON.stringify(next.reservations[dateIso]||{}));
+            day[roomId] ||= {};
+            day[roomId][period] = { teacherId:payload.teacherId, pieces:payload.pieces, note:payload.note };
+            next.reservations[dateIso] = day;
+            if(payload.repeat){
+              next.recurring = [...s.recurring, { id:uid('rec'), weekday:getISODay(parseISO(dateIso)), roomId, period, teacherId:payload.teacherId, pieces:payload.pieces, note:payload.note, startISO:dateIso }];
+            }
+            return next;
           });
         }
-        function clearReservation(dateStr, roomId, period) {
+        function clearReservation(dateIso, roomId, period){
           setState(s=>{
             const next = {...s, reservations:{...s.reservations}};
-            const day = {...(next.reservations[dateStr]||{})};
-            delete day[roomId]?.[period];
-            next.reservations[dateStr] = day; return next;
+            const day = JSON.parse(JSON.stringify(next.reservations[dateIso]||{}));
+            if(day[roomId]) delete day[roomId][period];
+            next.reservations[dateIso] = day; return next;
           });
         }
+        function stopRecurring(id){ setState(s=>({...s, recurring:s.recurring.filter(r=>r.id!==id)})); }
+
+        // Form inputs
+        const [newTeacher, setNewTeacher] = useState("");
+        const [newRoom, setNewRoom] = useState({name:"", floor:""});
 
         return (
-          <div className="p-4 max-w-6xl mx-auto grid gap-4">
-            <header className="flex justify-between items-center">
-              <h1 className="text-xl font-bold">Rezervace Chromebooků</h1>
+          <div className="p-4 max-w-7xl mx-auto grid gap-4">
+            <header className="flex items-center justify-between">
+              <h1 className="text-2xl font-bold">Rezervace Chromebooků a učeben</h1>
               <div className="flex gap-2">
-                <button onClick={()=>setMonthCursor(subMonths(monthCursor,1))} className="px-2 border rounded">&lt;</button>
-                <button onClick={()=>setMonthCursor(new Date())} className="px-2 border rounded">Dnes</button>
-                <button onClick={()=>setMonthCursor(addMonths(monthCursor,1))} className="px-2 border rounded">&gt;</button>
+                <button onClick={()=>setMonthCursor(subMonths(monthCursor,1))} className="px-3 py-2 rounded-xl border bg-white">Předchozí</button>
+                <button onClick={()=>setMonthCursor(new Date())} className="px-3 py-2 rounded-xl border bg-white">Dnes</button>
+                <button onClick={()=>setMonthCursor(addMonths(monthCursor,1))} className="px-3 py-2 rounded-xl border bg-white">Další</button>
               </div>
             </header>
 
-            <div className="grid grid-cols-7 gap-2">
-              {daysInMonth.map(d=>{
-                const isSel=isSameDay(d,selectedDate);
-                return <button key={d} onClick={()=>setSelectedDate(d)} className={`h-16 rounded border ${isSel?"bg-fuchsia-200":"bg-white"}`}>{format(d,"d.")}</button>
-              })}
-            </div>
+            {/* Kalendář */}
+            <section className="bg-white/80 rounded-2xl p-4">
+              <h2 className="text-lg font-semibold mb-2">{monthCursor.toLocaleDateString('cs-CZ', { month:'long', year:'numeric' })}</h2>
+              <div className="grid grid-cols-7 gap-2">
+                {(() => {
+                  const items=[];
+                  const firstIso = getISODay(startOfMonth(monthCursor));
+                  const pad = (firstIso+6)%7; // 0..6, kolik prázdných na začátku
+                  for(let i=0;i<pad;i++) items.push(<div key={`pad-${i}`}></div>);
+                  for(const d of daysInMonth){
+                    const sel = isSameDay(d, selectedDate);
+                    items.push(
+                      <button key={d.toISOString()} onClick={()=>setSelectedDate(d)} className={`h-20 rounded-2xl border p-2 text-left ${sel? 'ring-2 ring-fuchsia-400 bg-fuchsia-50':'bg-white'}`}>
+                        <div className="text-sm font-semibold">{dayLabel(d)}</div>
+                      </button>
+                    );
+                  }
+                  return items;
+                })()}
+              </div>
+            </section>
 
-            <div className="overflow-auto">
-              <table className="w-full text-sm border">
-                <thead>
-                  <tr><th className="p-2 text-left">Učebna</th>{PERIODS.map(p=><th key={p}>{p}. hod.</th>)}</tr>
-                </thead>
-                <tbody>
-                  {state.rooms.map(room=>(
-                    <tr key={room.id}>
-                      <td className="p-2 font-medium">{room.name}<div className="text-xs">{room.floor}</div></td>
-                      {PERIODS.map(p=>{
-                        const cell=state.reservations[selectedIso]?.[room.id]?.[p];
-                        return <td key={p} className="border p-1">
-                          {cell?
-                            <div>
-                              {state.teachers.find(t=>t.id===cell.teacherId)?.name}
-                              <button onClick={()=>clearReservation(selectedIso,room.id,p)} className="block text-xs text-red-500">Smazat</button>
-                            </div>
-                          :
-                            <button onClick={()=>setDialogCfg({dateIso:selectedIso,roomId:room.id,period:p})} className="text-xs text-gray-500">+ Přidat</button>}
-                        </td>
-                      })}
-                    </tr>
+            <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+              {/* Učitelé */}
+              <section className="bg-white/80 rounded-2xl p-4">
+                <h2 className="text-lg font-semibold mb-2">Učitelé</h2>
+                <div className="flex gap-2 mb-3">
+                  <input className="flex-1 border rounded-xl px-3 py-2" placeholder="Jméno a příjmení" value={newTeacher} onChange={e=>setNewTeacher(e.target.value)} />
+                  <button onClick={()=>{ if(newTeacher.trim()) { addTeacher(newTeacher.trim()); setNewTeacher(''); } }} className="px-3 py-2 rounded-xl bg-black text-white">Přidat</button>
+                </div>
+                <div className="flex flex-wrap gap-2">
+                  {state.teachers.map(t=> (
+                    <span key={t.id} className="inline-flex items-center gap-2 px-3 py-1 rounded-full border">
+                      {t.name}
+                      <button className="text-red-600" onClick={()=>removeTeacher(t.id)}>✕</button>
+                    </span>
                   ))}
-                </tbody>
-              </table>
+                </div>
+              </section>
+
+              {/* Učebny */}
+              <section className="bg-white/80 rounded-2xl p-4">
+                <h2 className="text-lg font-semibold mb-2">Učebny / Vozíky</h2>
+                <div className="grid grid-cols-5 gap-2 mb-3">
+                  <input className="col-span-3 border rounded-xl px-3 py-2" placeholder="Název" value={newRoom.name} onChange={e=>setNewRoom(v=>({...v, name:e.target.value}))} />
+                  <input className="col-span-1 border rounded-xl px-3 py-2" placeholder="Patro" value={newRoom.floor} onChange={e=>setNewRoom(v=>({...v, floor:e.target.value}))} />
+                  <button className="col-span-1 px-3 py-2 rounded-xl bg-black text-white" onClick={()=>{ if(newRoom.name.trim()) { addRoom(newRoom.name.trim(), newRoom.floor.trim()); setNewRoom({name:"", floor:""}); } }}>Přidat</button>
+                </div>
+                <div className="flex flex-col gap-2">
+                  {state.rooms.map(r=> (
+                    <div key={r.id} className="flex items-center justify-between rounded-xl border bg-white/70 px-3 py-2">
+                      <div>
+                        <div className="font-medium">{r.name}</div>
+                        <div className="text-xs text-gray-600">{r.floor}</div>
+                      </div>
+                      <button className="p-2 rounded-lg hover:bg-gray-100" onClick={()=>removeRoom(r.id)} title="Odebrat">✕</button>
+                    </div>
+                  ))}
+                </div>
+              </section>
+
+              {/* Opakované rezervace */}
+              <section className="bg-white/80 rounded-2xl p-4">
+                <h2 className="text-lg font-semibold mb-2">Opakované rezervace</h2>
+                {state.recurring.length===0 && <div className="text-sm text-gray-600">Zatím žádné.</div>}
+                <div className="flex flex-col gap-2">
+                  {state.recurring.map(r=> (
+                    <div key={r.id} className="flex items-center justify-between rounded-xl border bg-yellow-50 px-3 py-2">
+                      <div className="text-sm">
+                        <span className="font-medium">{['Po','Út','St','Čt','Pá','So','Ne'][r.weekday-1]} {r.period}. hod. – {state.rooms.find(x=>x.id===r.roomId)?.name}</span>
+                        {' · '}{state.teachers.find(t=>t.id===r.teacherId)?.name}
+                        {r.pieces? ` · ${r.pieces} ks`:''}
+                        {r.note? ` · ${r.note}`:''}
+                        <div className="text-xs text-gray-600">od {r.startISO}</div>
+                      </div>
+                      <button onClick={()=>stopRecurring(r.id)} className="px-3 py-1 rounded-xl border">Zrušit</button>
+                    </div>
+                  ))}
+                </div>
+              </section>
             </div>
 
-            <ReservationDialog open={!!dialogCfg} onClose={()=>setDialogCfg(null)} teachers={state.teachers} initial={null}
-              onSave={(payload)=>{ upsertReservation(dialogCfg.dateIso, dialogCfg.roomId, dialogCfg.period, payload); }}/>
+            {/* Denní plán */}
+            <section className="bg-white/80 rounded-2xl p-4">
+              <h2 className="text-lg font-semibold mb-2">Plán pro {fullDateCz(selectedDate)}</h2>
+              <div className="overflow-auto">
+                <table className="w-full text-sm">
+                  <thead>
+                    <tr>
+                      <th className="text-left p-2 sticky left-0 bg-white/90 backdrop-blur z-10">Učebna</th>
+                      {PERIODS.map(p=> <th key={p} className="p-2 min-w-28 text-center">{p}. hod.</th>)}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {state.rooms.map(room=> (
+                      <tr key={room.id} className="odd:bg-white/60 even:bg-white/40">
+                        <th className="text-left p-2 sticky left-0 bg-white/80 backdrop-blur z-10">
+                          <div className="font-medium">{room.name}</div>
+                          <div className="text-xs text-gray-600">{room.floor}</div>
+                        </th>
+                        {PERIODS.map(p=>{
+                          const cell = effectivePlan?.[room.id]?.[p];
+                          const isRecurring = !!cell?.recurringId;
+                          return (
+                            <td key={p} className="align-top p-1">
+                              <div className={`rounded-xl border p-2 min-h-16 ${isRecurring? 'bg-yellow-50':'bg-white'}`}>
+                                {cell ? (
+                                  <div className="flex flex-col gap-1">
+                                    <div className="font-medium">{state.teachers.find(t=>t.id===cell.teacherId)?.name || '?' }{cell.pieces? ` · ${cell.pieces} ks`:''}</div>
+                                    {cell.note && <div className="text-xs text-gray-600">{cell.note}</div>}
+                                    <div className="flex gap-2 mt-1">
+                                      {!cell.recurringId && (
+                                        <button className="px-2 py-1 rounded-lg border text-xs" onClick={()=> setDialog({dateIso:selectedIso, roomId:room.id, period:p, initial:cell})}>Upravit</button>
+                                      )}
+                                      {cell.recurringId ? (
+                                        <button className="px-2 py-1 rounded-lg border text-xs" onClick={()=> stopRecurring(cell.recurringId)}>Zrušit opak.</button>
+                                      ) : (
+                                        <button className="px-2 py-1 rounded-lg border text-xs" onClick={()=> clearReservation(selectedIso, room.id, p)}>Smazat</button>
+                                      )}
+                                    </div>
+                                  </div>
+                                ) : (
+                                  <button className="w-full text-left text-xs text-gray-600 hover:text-black" onClick={()=> setDialog({dateIso:selectedIso, roomId:room.id, period:p})}>+ Přidat</button>
+                                )}
+                              </div>
+                            </td>
+                          );
+                        })}
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </section>
+
+            <ReservationDialog open={!!dialog} onClose={()=>setDialog(null)} teachers={state.teachers} initial={dialog?.initial}
+              onSave={(payload)=>{ upsertReservation(dialog.dateIso, dialog.roomId, dialog.period, payload); }} />
           </div>
         );
       }
 
-      ReactDOM.createRoot(document.getElementById("root")).render(<App/>);
+      ReactDOM.createRoot(document.getElementById('root')).render(<App/>);
     </script>
   </body>
 </html>
