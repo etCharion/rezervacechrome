@@ -21,9 +21,6 @@
       const addDays     = (d,n)=>{ const x=new Date(d); x.setDate(x.getDate()+n); return x; };
       const startOfWeek = (d)=>{ const iso = ((d.getDay()||7)); return addDays(new Date(d.getFullYear(),d.getMonth(),d.getDate()), -(iso-1)); };// Po
       const addWeeks    = (d,n)=> addDays(d, n*7);
-      const startOfMonth= (d)=> new Date(d.getFullYear(), d.getMonth(), 1);
-      const endOfMonth  = (d)=> new Date(d.getFullYear(), d.getMonth()+1, 0);
-      const addMonths   = (d,n)=> new Date(d.getFullYear(), d.getMonth()+n, d.getDate());
       const isSameDay   = (a,b)=> a.getFullYear()===b.getFullYear() && a.getMonth()===b.getMonth() && a.getDate()===b.getDate();
       const getISODay   = (d)=> { const g = d.getDay(); return g===0?7:g; }; // Po=1 ... Ne=7
       const fullDateCz  = (d)=> d.toLocaleDateString('cs-CZ',{ weekday:'long', day:'numeric', month:'long', year:'numeric' });
@@ -40,7 +37,7 @@
         rooms:[
           {id:uid('r'), name:'IT učebna', floor:'přízemí', code:'IT'},
           {id:uid('r'), name:'Vozík 1', floor:'1. patro', code:'V1'},
-          {id:uid('r'), name:'Druhé patro', floor:'2. patro', code:'2P'},
+          {id:uid('r'), name:'První patro', floor:'1', code:'P1'},
         ],
         reservations:{}, // { 'YYYY-MM-DD': { [roomId]: { [period]: {teacherId, pieces?, note?} } } }
         recurring:[],    // { id, weekday(1-7), roomId, period, teacherId, pieces?, note?, startISO, endISO? }
@@ -192,17 +189,20 @@
               <h1 className="text-2xl font-bold">Rezervace Chromebooků a učeben</h1>
               <div className="flex items-center gap-2">
                 <button onClick={()=>setSelectedDate(addWeeks(selectedDate,-1))} className="px-3 py-2 rounded-xl border bg-white">◀ Týden</button>
-                <button onClick={()=>setSelectedDate(new Date())} className="px-3 py-2 rounded-xl border bg-white">Dnes</button>
+                <button onClick={openDatePicker} className="px-3 py-2 rounded-xl border bg-white">📅 Datum</button>
                 <button onClick={()=>setSelectedDate(addWeeks(selectedDate,1))} className="px-3 py-2 rounded-xl border bg-white">Týden ▶</button>
+                <button onClick={()=>setShowSettings(s=>!s)} className="px-3 py-2 rounded-xl border bg-white">{showSettings? 'Skrýt nastavení':'Nastavení'}</button>
               </div>
             </header>
+            {/* Skrytý nativní date-picker */}
+            <input ref={datePickerRef} type="date" className="hidden" value={selectedIso} onChange={onPickDate} />
 
-            {/* Pracovní týden (Po–Pá) s přehledem rezervací + políčko s kalendářem */}
+            {/* Pracovní týden (Po–Pá) s přehledem rezervací */}
             <section className="bg-white/80 rounded-2xl p-4">
-              <div className="grid grid-cols-6 text-center text-xs font-medium text-gray-600 mb-2">
-                {['Po','Út','St','Čt','Pá','⏷'].map((n,i)=> <div key={i} className="py-1">{i<5?n:' '}</div>)}
+              <div className="grid grid-cols-5 text-center text-xs font-medium text-gray-600 mb-2">
+                {['Po','Út','St','Čt','Pá'].map((n,i)=> <div key={i} className="py-1">{n}</div>)}
               </div>
-              <div className="grid grid-cols-6 gap-2">
+              <div className="grid grid-cols-5 gap-2">
                 {workweek.map(d=>{
                   const sel = isSameDay(d, selectedDate);
                   const items = daySummaryDetailed(d); // [{period,code,recurring}]
@@ -224,21 +224,6 @@
                     </button>
                   );
                 })}
-
-                {/* Další "den" s ikonou kalendáře pro výběr měsíce/roku */}
-                <button onClick={openDatePicker} className="h-28 rounded-2xl border p-2 text-center bg-white hover:shadow flex items-center justify-center">
-                  <div>
-                    <div className="text-2xl">📅</div>
-                    <div className="text-xs text-gray-600">Vybrat datum</div>
-                  </div>
-                </button>
-                <input ref={datePickerRef} type="date" className="hidden" value={selectedIso} onChange={onPickDate} />
-              </div>
-              <div className="mt-2 flex justify-end gap-2 text-sm">
-                <button onClick={()=>setSelectedDate(addMonths(selectedDate,-1))} className="px-2 py-1 border rounded bg-white">◀ Měsíc</button>
-                <button onClick={()=>setSelectedDate(addMonths(selectedDate,1))}  className="px-2 py-1 border rounded bg-white">Měsíc ▶</button>
-                <button onClick={()=>setSelectedDate(new Date(selectedDate.getFullYear()-1, selectedDate.getMonth(), selectedDate.getDate()))} className="px-2 py-1 border rounded bg-white">◀ Rok</button>
-                <button onClick={()=>setSelectedDate(new Date(selectedDate.getFullYear()+1, selectedDate.getMonth(), selectedDate.getDate()))} className="px-2 py-1 border rounded bg-white">Rok ▶</button>
               </div>
             </section>
 
