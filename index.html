@@ -84,7 +84,9 @@
 
       function ReservationDialog({open,onClose,onSave,teachers,initial,room}){ 
         const [teacherId,setTeacherId]=useState(initial?.teacherId||teachers[0]?.id||"");
-        const [pieces,setPieces]=useState(initial?.pieces??1);
+        const [pieces,setPieces] = useState(
+          initial?.pieces ?? (room?.type === "equipment" ? (room?.max || 1) : 1)
+        );
         const [note,setNote]=useState(initial?.note||"");
         const [repeat,setRepeat]=useState(false);
         useEffect(()=>{ if(open){ setPieces(initial?.pieces??1);} },[open,initial]);
