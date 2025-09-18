@@ -31,8 +31,6 @@
       const PERIODS=["0","1","2","3","4","5","6","7","8"];
       const STORAGE_KEY="rezervace-chromebooku-state-v4";
       const uid=(p="id")=>`${p}_${Math.random().toString(36).slice(2,10)}`;
-      const [dragRoomId, setDragRoomId] = useState(null);
-      const [isDraggingRoom, setIsDraggingRoom] = useState(false);
 
       const defaultState={
         teachers:[{id:uid("t"),name:"Nováková"},{id:uid("t"),name:"Dvořák"}],
@@ -57,28 +55,6 @@
             <div className="flex justify-end mt-3"><button onClick={onClose} className="px-3 py-2 rounded-xl border">Hotovo</button></div>
           </div>
         </div>);
-      }
-      function onRoomDragStart(id) {
-        setDragRoomId(id);
-        setIsDraggingRoom(true);
-      }
-      function onRoomDragEnd() {
-        setIsDraggingRoom(false);
-        setDragRoomId(null);
-      }
-      function onRoomDrop(targetId) {
-        setState((s) => {
-          if (!dragRoomId || dragRoomId === targetId) return s;
-          const newRooms = [...s.rooms];
-          const from = newRooms.findIndex(r => r.id === dragRoomId);
-          const to = newRooms.findIndex(r => r.id === targetId);
-          if (from < 0 || to < 0) return s;
-          const [moved] = newRooms.splice(from, 1);
-          newRooms.splice(to, 0, moved);
-          return { ...s, rooms: newRooms };
-        });
-        setIsDraggingRoom(false);
-        setDragRoomId(null);
       }
 
       function RoomDialog({open,initial,onClose,onSave}){ 
@@ -158,6 +134,10 @@
         const [editingRoom,setEditingRoom]=useState(null);
         const [creatingRoom,setCreatingRoom]=useState(false);
         const [newTeacher,setNewTeacher]=useState("");
+        // Drag & drop stav pro učebny
+        const [dragRoomId, setDragRoomId] = useState(null);
+        const [isDraggingRoom, setIsDraggingRoom] = useState(false);
+
         useEffect(()=>saveState(state),[state]);
 
         const selectedIso=toISO(selectedDate);
@@ -213,6 +193,24 @@
         const addRoom=(name,floor,code,type,max)=>setState(s=>({...s,rooms:[...s.rooms,{id:uid("r"),name,floor,code:code||name.slice(0,2).toUpperCase(),type:type||"room",max:type==="equipment"?max:undefined}]}));
         const updateRoom=(id,patch)=>setState(s=>({...s,rooms:s.rooms.map(r=>r.id===id?{...r,...patch}:r)}));
         const removeRoom=(id)=>setState(s=>({...s,rooms:s.rooms.filter(r=>r.id!==id)}));
+
+        // drag & drop handlery (uvnitř App, mají přístup k setState)
+        function onRoomDragStart(id){ setDragRoomId(id); setIsDraggingRoom(true); }
+        function onRoomDragEnd(){ setIsDraggingRoom(false); setDragRoomId(null); }
+        function onRoomDrop(targetId){
+          setState((s)=>{
+            if(!dragRoomId || dragRoomId===targetId) return s;
+            const newRooms=[...s.rooms];
+            const from=newRooms.findIndex(r=>r.id===dragRoomId);
+            const to=newRooms.findIndex(r=>r.id===targetId);
+            if(from<0||to<0) return s;
+            const [moved]=newRooms.splice(from,1);
+            newRooms.splice(to,0,moved);
+            return {...s, rooms:newRooms};
+          });
+          setIsDraggingRoom(false);
+          setDragRoomId(null);
+        }
 
         // rezervace
         function upsertReservation(dateIso,roomId,period,payload){
@@ -336,28 +334,35 @@
             <div>
               <h2 className="text-lg font-semibold mb-2">Učebny / Pomůcky</h2>
               <div className="flex gap-2 mb-3">
-                <button
-                  className="px-3 py-2 rounded-xl bg-black text-white"
-                  onClick={()=>setCreatingRoom(true)}
-                >
-                  Přidat
-                </button>
+                <button className="px-3 py-2 rounded-xl bg-black text-white" onClick={()=>setCreatingRoom(true)}>Přidat</button>
               </div>
               <div className="flex flex-col gap-2">
-                {state.rooms.map(r=>(<div key={r.id} className="flex items-center justify-between rounded-xl border bg-white/70 px-3 py-2">
-                  <div>
-                    <div className="font-medium">{r.name}</div>
-                    <div className="mt-0.5 flex gap-2 items-center text-xs text-gray-700">
-                      <span className="px-1.5 py-0.5 rounded bg-gray-100 border">{r.code}</span>
-                      <span className="px-1.5 py-0.5 rounded bg-gray-100 border">{r.floor}</span>
-                      <span className="px-1.5 py-0.5 rounded bg-gray-100 border">{r.type==='equipment'?`pomůcka${r.max?` • max ${r.max}`:''}`:'učebna'}</span>
+                {state.rooms.map(r=>(
+                  <div
+                    key={r.id}
+                    className="flex items-center justify-between rounded-xl border bg-white/70 px-3 py-2 cursor-move select-none"
+                    draggable
+                    onDragStart={()=>onRoomDragStart(r.id)}
+                    onDragEnd={onRoomDragEnd}
+                    onDragOver={(e)=>e.preventDefault()}
+                    onDrop={()=>onRoomDrop(r.id)}
+                    onClick={()=>{ if(!isDraggingRoom) setEditingRoom(r); }}
+                  >
+                    <div>
+                      <div className="font-medium">{r.name}</div>
+                      <div className="mt-0.5 flex gap-2 items-center text-xs text-gray-700">
+                        <span className="px-1.5 py-0.5 rounded bg-gray-100 border">{r.code}</span>
+                        <span className="px-1.5 py-0.5 rounded bg-gray-100 border">{r.floor}</span>
+                        <span className="px-1.5 py-0.5 rounded bg-gray-100 border">{r.type==='equipment'?`pomůcka${r.max?` • max ${r.max}`:''}`:'učebna'}</span>
+                      </div>
                     </div>
+                    <button
+                      className="text-red-600 px-2 py-1 rounded-full hover:bg-red-50"
+                      title="Odebrat"
+                      onClick={(e)=>{ e.stopPropagation(); removeRoom(r.id); }}
+                    >✕</button>
                   </div>
-                  <div className="flex gap-2">
-                    <button className="px-2 py-1 rounded-lg border text-xs" onClick={()=>setEditingRoom(r)}>Upravit</button>
-                    <button className="px-2 py-1 rounded-lg border text-xs text-red-700" onClick={()=>removeRoom(r.id)}>Smazat</button>
-                  </div>
-                </div>))}
+                ))}
               </div>
             </div>
 
