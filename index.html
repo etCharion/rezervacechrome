@@ -29,6 +29,9 @@
       // Porovnání ISO dat (jen datum, bez času)
       const cmpISO=(a,b)=>{const A=parseISO(a),B=parseISO(b);if(A<B) return -1;if(A>B) return 1;return 0;};
 
+      // Bezpečný rozdíl v celých dnech (zaokrouhlený)
+      const diffDays=(aISO,bISO)=> Math.round((parseISO(aISO) - parseISO(bISO))/86400000);
+
       // Konec školního roku (30. 6.)
       function schoolYearEndISO(date){
         const y=date.getFullYear();
@@ -220,18 +223,25 @@
 
         const selectedIso=toISO(selectedDate);
 
+        // --- Pomocná funkce: patří výskyt do série v daný den? ---
+        function occursOn(dateISO, rec){
+          if (cmpISO(dateISO, rec.startISO) < 0) return false;
+          const days = diffDays(dateISO, rec.startISO);
+          if (days % 7 !== 0) return false;
+          if (rec.mode === 'weeks' && typeof rec.weeks === 'number'){
+            const weekIndex = Math.floor(days / 7);       // 0,1,2,... 
+            return weekIndex >= 0 && weekIndex < rec.weeks;
+          }
+          // 'until' režim – do endISO včetně
+          if (rec.endISO && cmpISO(dateISO, rec.endISO) > 0) return false;
+          return true;
+        }
+
         // plán dne + opakované (žluté/modré)
         const effectivePlan=useMemo(()=>{
           const plan=JSON.parse(JSON.stringify(state.reservations[selectedIso]||{}));
           state.recurring.forEach(r=>{
-            // je to den >= start?
-            if (cmpISO(selectedIso, r.startISO) < 0) return;
-            // po týdnech (násobky 7 dnů)?
-            const daysSinceStart = Math.round((parseISO(selectedIso) - parseISO(r.startISO)) / 86400000);
-            if (daysSinceStart % 7 !== 0) return;
-            // a je to <= endISO?
-            if (r.endISO && cmpISO(selectedIso, r.endISO) > 0) return;
-
+            if (!occursOn(selectedIso, r)) return;
             plan[r.roomId]??={};
             if(!plan[r.roomId][r.period]){
               plan[r.roomId][r.period]={teacherId:r.teacherId,pieces:r.pieces,note:r.note,recurringId:r.id,allowElsewhere: !!r.allowElsewhere};
@@ -257,10 +267,7 @@
             });
           });
           state.recurring.forEach(r=>{
-            if (cmpISO(iso, r.startISO) < 0) return;
-            const daysSinceStart = Math.round((parseISO(iso) - parseISO(r.startISO)) / 86400000);
-            if (daysSinceStart % 7 !== 0) return;
-            if (r.endISO && cmpISO(iso, r.endISO) > 0) return;
+            if (!occursOn(iso, r)) return;
             const key=`${r.roomId}|${r.period}`;
             if(seen.has(key)) return;
             items.push({period:r.period,code:(state.rooms.find(x=>x.id===r.roomId)?.code||"?"), kind: r.allowElsewhere ? 'rec-blue' : 'rec-amber'});
@@ -302,8 +309,7 @@
             const day=JSON.parse(JSON.stringify(next.reservations[dateIso]||{}));
             day[roomId]??={};
 
-            // Pokud se nastavuje OPAKOVÁNÍ, nechceme v den startu držet "single" zápis,
-            // aby první výskyt nebyl červený, ale rovnou žlutý/modrý (podle recurring).
+            // Pokud se nastavuje OPAKOVÁNÍ, nechceme v den startu držet "single" zápis
             if (payload.repeat){
               if (day[roomId][period]) delete day[roomId][period];
             }
@@ -330,22 +336,22 @@
                 allowElsewhere: (payload.repeat?.allowElsewhere===true) ? true : undefined,
               };
 
-              // vypočítej endISO dle módu — VŽDY od seriesStartISO
+              // vypočítej konec dle módu — VŽDY od seriesStartISO
               if (payload.repeat){
                 if (payload.repeat.mode==='until'){
                   newRecurring.mode='until';
                   newRecurring.endISO=schoolYearEndISO(parseISO(seriesStartISO));
+                  newRecurring.weeks=undefined;
                 } else {
                   const weeks=Math.max(1, Number(payload.repeat.weeks)||1);
                   newRecurring.mode='weeks';
-                  newRecurring.weeks=weeks;
-                  const endDate = addWeeks(parseISO(seriesStartISO), weeks-1); // poslední výskyt
-                  newRecurring.endISO = toISO(endDate);
+                  newRecurring.weeks=weeks; // uložíme explicitně, logika zobrazení používá weeks přímo
+                  newRecurring.endISO = toISO(addWeeks(parseISO(seriesStartISO), weeks-1)); // pro informativní listing
                 }
               }
 
               if (editingRecurringId){
-                // pokud je při editaci opakování vypnuté, sérii smažeme a hotovo
+                // při editaci a vypnutí opakování sérii smažeme
                 if (!payload.repeat){
                   next.recurring = s.recurring.filter(r=> r.id!==editingRecurringId);
                 } else {
