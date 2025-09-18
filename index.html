@@ -18,7 +18,7 @@
     <script type="text/babel">
       // ---------- utilitky ----------
       const toISO = (d)=>new Date(d.getFullYear(),d.getMonth(),d.getDate()).toISOString().slice(0,10);
-      const parseISO=(s)=>{const [y,m,dd]=s.split('-').map(Number);return new Date(y,m-1,dd);};
+      const parseISO=(s)=>{const [y,m,dd]=s.split('-').map(Number);return new Date(y, m-1, dd);};
       const addDays=(d,n)=>{const x=new Date(d);x.setDate(x.getDate()+n);return x;};
       const addWeeks=(d,n)=>addDays(d,n*7);
       const startOfWeek=(d)=>{const iso=d.getDay()||7;return addDays(new Date(d.getFullYear(),d.getMonth(),d.getDate()),-(iso-1));};
@@ -27,9 +27,18 @@
       const shortDateCz=(d)=>d.toLocaleDateString('cs-CZ',{day:'numeric',month:'numeric'});
       const dayDiff=(aISO,bISO)=>{const A=parseISO(aISO),B=parseISO(bISO);const AM=Date.UTC(A.getFullYear(),A.getMonth(),A.getDate());const BM=Date.UTC(B.getFullYear(),B.getMonth(),B.getDate());return Math.floor((AM-BM)/86400000);};
 
+      // konec školního roku (30. 6.)
+      function schoolYearEndISO(date){
+        const y = date.getFullYear();
+        const m = date.getMonth(); // 0-11
+        // pokud je datum od 1. 9. (m >= 8), konec je 30. 6. následujícího roku
+        const endYear = (m >= 8) ? y+1 : y;
+        return new Date(endYear, 5, 30).toISOString().slice(0,10); // červen = 5
+      }
+
       const {useState,useEffect,useMemo}=React;
       const PERIODS=["0","1","2","3","4","5","6","7","8"];
-      const STORAGE_KEY="rezervace-chromebooku-state-v4";
+      const STORAGE_KEY="rezervace-chromebooku-state-v5";
       const uid=(p="id")=>`${p}_${Math.random().toString(36).slice(2,10)}`;
 
       const defaultState={
@@ -39,8 +48,11 @@
           {id:uid("r"),name:"Vozík 1",floor:"1. patro",code:"V1",type:"equipment",max:20},
           {id:uid("r"),name:"Druhé patro",floor:"2. patro",code:"2P",type:"room"},
         ],
-        reservations:{},          // 'YYYY-MM-DD': { [roomId]: { [period]: {teacherId,pieces?,note?} } }
-        recurring:[],             // {id,roomId,period,teacherId,pieces?,note?,startISO,endISO?}
+        // 'YYYY-MM-DD': { [roomId]: { [period]: {teacherId,pieces?,note?} } }
+        reservations:{},
+        // opakované:
+        // {id,roomId,period,teacherId,pieces?,note?,startISO,endISO?, allowElsewhere:boolean}
+        recurring:[],
       };
       const loadState=()=>{try{return JSON.parse(localStorage.getItem(STORAGE_KEY))||defaultState;}catch{return defaultState;}};
       const saveState=(s)=>localStorage.setItem(STORAGE_KEY,JSON.stringify(s));
@@ -82,41 +94,100 @@
         </div>);
       }
 
-      function ReservationDialog({open,onClose,onSave,teachers,initial,room}){ 
+      function ReservationDialog({open,onClose,onSave,teachers,initial,room,selectedDate}){ 
         const [teacherId,setTeacherId]=useState(initial?.teacherId||teachers[0]?.id||"");
         const defaultPieces = room?.type === "equipment" ? (room?.max || 1) : 1;
         const [pieces, setPieces] = useState(initial?.pieces ?? defaultPieces);
         const [note,setNote]=useState(initial?.note||"");
-        const [repeat,setRepeat]=useState(false);
+
+        // opakování
+        const [repeatOn, setRepeatOn] = useState(false);
+        const [repeatWeeks, setRepeatWeeks] = useState(4);
+        const [repeatUntilEnd, setRepeatUntilEnd] = useState(false);
+        const [allowElsewhere, setAllowElsewhere] = useState(false); // false = musí být v učebně (žlutě), true = může být jinde (modře)
+
         useEffect(() => {
           if (open) {
             setPieces(initial?.pieces ?? defaultPieces);
+            setRepeatOn(false);
+            setRepeatWeeks(4);
+            setRepeatUntilEnd(false);
+            setAllowElsewhere(false);
           }
         }, [open, initial, room]);
+
         if(!open) return null;
         const isEquip=room?.type==="equipment", maxPieces=Math.max(1,room?.max||1);
+
         return(<div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30">
           <div className="bg-white rounded-2xl shadow-xl w-full max-w-md p-4 max-h-[90vh] overflow-y-auto">
             <div className="flex items-center justify-between mb-3"><h3 className="text-lg font-semibold">{initial?"Upravit rezervaci":"Nová rezervace"}</h3><button onClick={onClose} className="p-2 rounded-full hover:bg-gray-100">✕</button></div>
+
             <label className="block text-sm mb-2">Učitel/ka
               <select className="w-full border rounded-xl px-3 py-2 mt-1" value={teacherId} onChange={e=>setTeacherId(e.target.value)}>
                 {teachers.map(t=><option key={t.id} value={t.id}>{t.name}</option>)}
               </select>
             </label>
+
             {isEquip && (<div className="mb-2">
               <div className="flex justify-between text-xs text-gray-600"><span>Počet kusů</span><span>{pieces} / {maxPieces}</span></div>
               <input type="range" min="1" max={maxPieces} value={pieces} onChange={e=>setPieces(Number(e.target.value))} className="w-full"/>
             </div>)}
+
             <label className="block text-sm">Poznámka (volit.)
               <input className="w-full border rounded-xl px-3 py-2 mt-1" value={note} onChange={e=>setNote(e.target.value)}/>
             </label>
-            <label className="inline-flex items-center gap-2 text-sm mt-3">
-              <input type="checkbox" className="scale-110" checked={repeat} onChange={e=>setRepeat(e.target.checked)}/> Opakovat každý týden
-            </label>
+
+            {/* Opakování */}
+            <div className="mt-4 border-t pt-3">
+              <div className="text-sm font-medium mb-2">Opakovat každý týden</div>
+              <div className="inline-flex rounded-xl border overflow-hidden mb-3">
+                <button type="button" className={`px-3 py-1 ${!repeatOn ? 'bg-black text-white':'bg-white'}`} onClick={()=>setRepeatOn(false)}>Vypnuto</button>
+                <button type="button" className={`px-3 py-1 ${repeatOn ? 'bg-black text-white':'bg-white'}`} onClick={()=>setRepeatOn(true)}>Zapnuto</button>
+              </div>
+
+              {repeatOn && (
+                <div className="space-y-3">
+                  <div className="grid grid-cols-2 gap-3">
+                    <label className="text-sm">
+                      <span className="block mb-1">Počet týdnů</span>
+                      <input type="number" min="1" max="40" className="w-full border rounded-xl px-3 py-2"
+                             value={repeatWeeks} onChange={(e)=>setRepeatWeeks(Math.max(1, Math.min(40, Number(e.target.value)||1)))} disabled={repeatUntilEnd}/>
+                    </label>
+                    <label className="text-sm">
+                      <span className="block mb-1">Do konce školního roku (30. 6.)</span>
+                      <input type="checkbox" className="scale-125 ml-1"
+                             checked={repeatUntilEnd} onChange={(e)=>setRepeatUntilEnd(e.target.checked)} />
+                    </label>
+                  </div>
+
+                  <div className="text-sm">
+                    <div className="mb-1">Místo konání</div>
+                    <div className="inline-flex rounded-xl border overflow-hidden">
+                      <button type="button" className={`px-3 py-1 ${!allowElsewhere ? 'bg-black text-white':'bg-white'}`} onClick={()=>setAllowElsewhere(false)}>Hodina musí být v učebně</button>
+                      <button type="button" className={`px-3 py-1 ${allowElsewhere ? 'bg-black text-white':'bg-white'}`} onClick={()=>setAllowElsewhere(true)}>Hodina může být i jinde</button>
+                    </div>
+                    <div className="text-xs text-gray-600 mt-1">
+                      {allowElsewhere ? 'Opakované rezervace budou modře.' : 'Opakované rezervace budou žlutě.'}
+                    </div>
+                  </div>
+                </div>
+              )}
+            </div>
+
             <div className="flex justify-end gap-2 mt-4">
               <button onClick={onClose} className="px-3 py-2 rounded-xl border">Zrušit</button>
               <button onClick={()=>{
-                onSave({teacherId,pieces:isEquip?Number(pieces):undefined,note,repeat});
+                onSave({
+                  teacherId,
+                  pieces:isEquip?Number(pieces):undefined,
+                  note,
+                  repeat: repeatOn ? {
+                    weeks: repeatWeeks,
+                    untilEnd: repeatUntilEnd,
+                    allowElsewhere
+                  } : null
+                });
                 onClose();
               }} className="px-3 py-2 rounded-xl bg-black text-white">Uložit</button>
             </div>
@@ -142,16 +213,22 @@
 
         const selectedIso=toISO(selectedDate);
 
-        // plán dne + opakované (žluté)
+        // plán dne + opakované (žluté nebo modré)
         const effectivePlan=useMemo(()=>{
           const plan=JSON.parse(JSON.stringify(state.reservations[selectedIso]||{}));
           state.recurring.forEach(r=>{
             const diff=dayDiff(selectedIso,r.startISO);
-            const inRange=diff>=0 && diff%7===0 && (!r.endISO || dayDiff(r.endISO,selectedIso)>=0);
+            const inRange = diff>=0 && diff%7===0 && (!r.endISO || dayDiff(r.endISO,selectedIso)>=0);
             if(!inRange) return;
             plan[r.roomId]??={};
             if(!plan[r.roomId][r.period]){
-              plan[r.roomId][r.period]={teacherId:r.teacherId,pieces:r.pieces,note:r.note,recurringId:r.id};
+              plan[r.roomId][r.period]={
+                teacherId:r.teacherId,
+                pieces:r.pieces,
+                note:r.note,
+                recurringId:r.id,
+                allowElsewhere: !!r.allowElsewhere
+              };
             }
           });
           return plan;
@@ -163,23 +240,23 @@
           return [0,1,2,3,4].map(off=>addDays(start,off));
         },[selectedDate]);
 
-        // přehled dne (nezdvojovat slot zadaný v ten den)
+        // přehled dne pro týdenní panel
         function daySummary(date){
           const iso=toISO(date), items=[], seen=new Set();
           const direct=state.reservations[iso]||{};
           Object.entries(direct).forEach(([roomId,slots])=>{
             Object.keys(slots).forEach(period=>{
               seen.add(`${roomId}|${period}`);
-              items.push({period,code:(state.rooms.find(r=>r.id===roomId)?.code||"?"),recurring:false});
+              items.push({period,code:(state.rooms.find(r=>r.id===roomId)?.code||"?"), kind:'single'});
             });
           });
           state.recurring.forEach(r=>{
             const diff=dayDiff(iso,r.startISO);
-            const inRange=diff>=0 && diff%7===0 && (!r.endISO || dayDiff(r.endISO,iso)>=0);
+            const inRange = diff>=0 && diff%7===0 && (!r.endISO || dayDiff(r.endISO,iso)>=0);
             if(!inRange) return;
             const key=`${r.roomId}|${r.period}`;
-            if(seen.has(key)) return;
-            items.push({period:r.period,code:(state.rooms.find(x=>x.id===r.roomId)?.code||"?"),recurring:true});
+            if(seen.has(key)) return; // v den zadání nezdvojovat
+            items.push({period:r.period,code:(state.rooms.find(x=>x.id===r.roomId)?.code||"?"), kind: r.allowElsewhere ? 'rec-blue' : 'rec-amber'});
           });
           items.sort((a,b)=>Number(a.period)-Number(b.period)||a.code.localeCompare(b.code));
           return items;
@@ -194,7 +271,7 @@
         const updateRoom=(id,patch)=>setState(s=>({...s,rooms:s.rooms.map(r=>r.id===id?{...r,...patch}:r)}));
         const removeRoom=(id)=>setState(s=>({...s,rooms:s.rooms.filter(r=>r.id!==id)}));
 
-        // drag & drop handlery
+        // drag & drop handlery (uvnitř App)
         function onRoomDragStart(id){ setDragRoomId(id); setIsDraggingRoom(true); }
         function onRoomDragEnd(){ setIsDraggingRoom(false); setDragRoomId(null); }
         function onRoomDrop(targetId){
@@ -220,8 +297,27 @@
             day[roomId]??={};
             day[roomId][period]={teacherId:payload.teacherId,pieces:payload.pieces,note:payload.note};
             next.reservations[dateIso]=day;
+
             if(payload.repeat){
-              next.recurring=[...s.recurring,{id:uid("rec"),roomId,period,teacherId:payload.teacherId,pieces:payload.pieces,note:payload.note,startISO:dateIso}];
+              // spočítej endISO
+              let endISO = null;
+              if (payload.repeat.untilEnd){
+                endISO = schoolYearEndISO(parseISO(dateIso));
+              } else {
+                const weeks = Math.max(1, Number(payload.repeat.weeks)||1);
+                const endDate = addWeeks(parseISO(dateIso), weeks-1); // poslední opakování
+                endISO = toISO(endDate);
+              }
+              next.recurring=[...s.recurring,{
+                id:uid("rec"),
+                roomId, period,
+                teacherId:payload.teacherId,
+                pieces:payload.pieces,
+                note:payload.note,
+                startISO:dateIso,
+                endISO,
+                allowElsewhere: !!payload.repeat.allowElsewhere
+              }];
             }
             return next;
           });
@@ -252,35 +348,26 @@
           {/* modal datum */}
           <DateModal open={dateModal} valueISO={toISO(selectedDate)} onClose={()=>setDateModal(false)} onChange={(v)=>v&&setSelectedDate(parseISO(v))}/>
 
-          {/* pracovní týden */}
+          {/* pracovní týden – mobilní horizontální scroll */}
           <section className="bg-white/80 rounded-2xl p-4">
-            <div className="hidden sm:grid grid-cols-5 text-center text-xs font-medium text-gray-600 mb-2">
-              {["Po","Út","St","Čt","Pá"].map((n,i)=><div key={i} className="py-1">{n}</div>)}
-            </div>
-
-            {/* mobile: horizontální list, desktop: 5 sloupců */}
+            <div className="hidden sm:grid grid-cols-5 text-center text-xs font-medium text-gray-600 mb-2">{["Po","Út","St","Čt","Pá"].map((n,i)=><div key={i} className="py-1">{n}</div>)}</div>
             <div className="sm:grid sm:grid-cols-5 gap-2 flex overflow-x-auto -mx-2 px-2">
               {workweek.map(d=>{
                 const sel=isSameDay(d,selectedDate), items=daySummary(d);
-                return(
-                  <button
-                    key={d.toISOString()}
-                    onClick={()=>setSelectedDate(d)}
-                    className={`sm:h-28 h-24 sm:w-auto w-40 shrink-0 rounded-2xl border p-2 text-left bg-white hover:shadow ${sel?'ring-2 ring-fuchsia-400':''}`}
-                  >
-                    <div className="text-sm font-semibold">{shortDateCz(d)}</div>
-                    <div className="mt-1 flex flex-wrap gap-1">
-                      {items.length===0
-                        ? <Badge className="bg-green-100 border border-green-400 text-green-800">volno</Badge>
-                        : items.map((it,idx)=>
-                          <Badge key={idx} className={it.recurring?"bg-amber-100 border border-amber-400 text-amber-900":"bg-red-100 border border-red-400 text-red-800"}>
-                            {it.period}. {it.code}
-                          </Badge>
-                        )
-                      }
-                    </div>
-                  </button>
-                );
+                return(<button key={d.toISOString()} onClick={()=>setSelectedDate(d)} className={`sm:h-28 h-24 sm:w-auto w-40 shrink-0 rounded-2xl border p-2 text-left bg-white hover:shadow ${sel?'ring-2 ring-fuchsia-400':''}`}>
+                  <div className="text-sm font-semibold">{shortDateCz(d)}</div>
+                  <div className="mt-1 flex flex-wrap gap-1">
+                    {items.length===0?<Badge className="bg-green-100 border border-green-400 text-green-800">volno</Badge>:
+                      items.map((it,idx)=>{
+                        const cls = it.kind==='single'
+                          ? "bg-red-100 border border-red-400 text-red-800"
+                          : (it.kind==='rec-blue'
+                              ? "bg-blue-100 border border-blue-400 text-blue-800"
+                              : "bg-amber-100 border border-amber-400 text-amber-900");
+                        return <Badge key={idx} className={cls}>{it.period}. {it.code}</Badge>;
+                      })}
+                  </div>
+                </button>);
               })}
             </div>
           </section>
@@ -288,8 +375,6 @@
           {/* denní plán */}
           <section className="bg-white/80 rounded-2xl p-4">
             <h2 className="text-lg font-semibold mb-2">{fullDateCz(selectedDate)}</h2>
-
-            {/* vodorovný scroll + min. šířka */}
             <div className="-mx-2 sm:mx-0 overflow-x-auto">
               <div className="min-w-[900px]">
                 <table className="w-full text-sm">
@@ -299,14 +384,18 @@
                       <tr key={room.id} className="odd:bg-white/60 even:bg-white/40">
                         <th className="text-left p-2 sticky left-0 bg-white/80 backdrop-blur z-10">
                           <div className="font-medium">{room.name}</div>
-                          {/* jen patro */}
                           <div className="mt-0.5 flex gap-2 items-center text-xs text-gray-700">
                             <span className="px-1.5 py-0.5 rounded bg-gray-100 border">{room.floor}</span>
                           </div>
                         </th>
                         {PERIODS.map(p=>{
                           const cell=effectivePlan?.[room.id]?.[p], isRecurring=!!cell?.recurringId;
-                          const baseCls=cell?(isRecurring?'bg-amber-100 border border-amber-400':'bg-red-100 border border-red-400'):'bg-green-100 border border-green-400';
+                          const recurringBlue = isRecurring && cell?.allowElsewhere;
+                          const baseCls = cell
+                            ? (isRecurring
+                                ? (recurringBlue ? 'bg-blue-100 border border-blue-400' : 'bg-amber-100 border border-amber-400')
+                                : 'bg-red-100 border border-red-400')
+                            : 'bg-green-100 border border-green-400';
                           return(<td key={p} className="align-top p-1">
                             <div className={`rounded-xl p-2 min-h-16 ${baseCls}`} onClick={()=>{
                               if(cell){ setDialog({dateIso:selectedIso,roomId:room.id,period:p,initial:cell});}
@@ -317,7 +406,11 @@
                                   <div className="font-medium flex items-center gap-2">
                                     {state.teachers.find(t=>t.id===cell.teacherId)?.name||'?' }
                                     {cell.pieces?<Badge className="bg-white/70 border text-xs">{cell.pieces} ks</Badge>:null}
-                                    {isRecurring&&<Badge className="bg-amber-200 border border-amber-500 text-amber-900">opak.</Badge>}
+                                    {isRecurring&&(
+                                      <Badge className={recurringBlue ? "bg-blue-200 border border-blue-500 text-blue-900" : "bg-amber-200 border border-amber-500 text-amber-900"}>
+                                        opak.
+                                      </Badge>
+                                    )}
                                   </div>
                                   {cell.note&&<div className="text-xs">{cell.note}</div>}
                                   <div className="flex gap-2 mt-1">
@@ -362,22 +455,10 @@
                     key={r.id}
                     className="flex items-center justify-between rounded-xl border bg-white/70 px-3 py-2 cursor-move select-none"
                     draggable
-                    onDragStart={()=>{ setDragRoomId(r.id); setIsDraggingRoom(true); }}
-                    onDragEnd={()=>{ setIsDraggingRoom(false); setDragRoomId(null); }}
+                    onDragStart={()=>onRoomDragStart(r.id)}
+                    onDragEnd={onRoomDragEnd}
                     onDragOver={(e)=>e.preventDefault()}
-                    onDrop={()=>{
-                      setState((s)=>{
-                        if(!dragRoomId || dragRoomId===r.id) return s;
-                        const newRooms=[...s.rooms];
-                        const from=newRooms.findIndex(x=>x.id===dragRoomId);
-                        const to=newRooms.findIndex(x=>x.id===r.id);
-                        if(from<0||to<0) return s;
-                        const [moved]=newRooms.splice(from,1);
-                        newRooms.splice(to,0,moved);
-                        return {...s, rooms:newRooms};
-                      });
-                      setIsDraggingRoom(false); setDragRoomId(null);
-                    }}
+                    onDrop={()=>onRoomDrop(r.id)}
                     onClick={()=>{ if(!isDraggingRoom) setEditingRoom(r); }}
                   >
                     <div>
@@ -402,12 +483,15 @@
               <h2 className="text-lg font-semibold mb-2">Opakované rezervace</h2>
               {state.recurring.length===0&&<div className="text-sm text-gray-600">Zatím žádné.</div>}
               <div className="flex flex-col gap-2">
-                {state.recurring.map(r=>(<div key={r.id} className="flex items-center justify-between rounded-xl border bg-amber-50 px-3 py-2">
+                {state.recurring.map(r=>(<div key={r.id} className="flex items-center justify-between rounded-xl border px-3 py-2"
+                  style={{backgroundColor: r.allowElsewhere ? 'rgba(191,219,254,0.5)' : 'rgba(253,230,138,0.5)'}}  /* modrá/žlutá */
+                >
                   <div className="text-sm">
                     <span className="font-medium">{state.rooms.find(x=>x.id===r.roomId)?.name}</span>
                     {" · "}{state.teachers.find(t=>t.id===r.teacherId)?.name}
                     {r.pieces?` · ${r.pieces} ks`:''}{r.note?` · ${r.note}`:''}
-                    <div className="text-xs text-gray-600">od {r.startISO}</div>
+                    <div className="text-xs text-gray-600">od {r.startISO} do {r.endISO}</div>
+                    <div className="text-xs">{r.allowElsewhere ? 'může být i jinde (modře)' : 'musí být v učebně (žlutě)'}</div>
                   </div>
                   <button onClick={()=>stopRecurring(r.id)} className="px-3 py-1 rounded-xl border">Zrušit</button>
                 </div>))}
@@ -416,7 +500,15 @@
           </section>)}
 
           {/* dialogy */}
-          <ReservationDialog open={!!dialog} onClose={()=>setDialog(null)} teachers={state.teachers} initial={dialog?.initial} room={state.rooms.find(r=>r.id===dialog?.roomId)} onSave={(payload)=>{upsertReservation(dialog.dateIso,dialog.roomId,dialog.period,payload);}}/>
+          <ReservationDialog
+            open={!!dialog}
+            onClose={()=>setDialog(null)}
+            teachers={state.teachers}
+            initial={dialog?.initial}
+            room={state.rooms.find(r=>r.id===dialog?.roomId)}
+            selectedDate={parseISO(dialog?.dateIso||toISO(new Date()))}
+            onSave={(payload)=>{upsertReservation(dialog.dateIso,dialog.roomId,dialog.period,payload);}}
+          />
           <RoomDialog open={!!editingRoom} initial={editingRoom} onClose={()=>setEditingRoom(null)} onSave={(patch)=>{updateRoom(editingRoom.id,patch);setEditingRoom(null);}}/>
           <RoomDialog open={creatingRoom} initial={null} onClose={()=>setCreatingRoom(false)} onSave={(patch)=>{addRoom(patch.name,patch.floor,patch.code,patch.type,patch.max);setCreatingRoom(false);}}/>
         </div>);
