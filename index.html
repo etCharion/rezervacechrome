@@ -49,7 +49,7 @@
       // ---------- modaly ----------
       function DateModal({open,valueISO,onClose,onChange}){ if(!open) return null;
         return(<div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
-          <div className="bg-white rounded-2xl shadow-xl w-full max-w-sm p-4">
+          <div className="bg-white rounded-2xl shadow-xl w-full max-w-sm p-4 max-h-[90vh] overflow-y-auto">
             <div className="flex items-center justify-between mb-3"><h3 className="text-lg font-semibold">Vyber datum</h3><button onClick={onClose} className="p-2 rounded-full hover:bg-gray-100">✕</button></div>
             <input type="date" className="w-full border rounded-xl px-3 py-2" value={valueISO} onChange={e=>onChange(e.target.value)} />
             <div className="flex justify-end mt-3"><button onClick={onClose} className="px-3 py-2 rounded-xl border">Hotovo</button></div>
@@ -63,7 +63,7 @@
         useEffect(()=>{ if(open){ setName(initial?.name||""); setFloor(initial?.floor||""); setCode(initial?.code||""); setType(initial?.type||"room"); setMax(initial?.max||1);} },[open,initial]);
         if(!open) return null; const isEquip=type==="equipment";
         return(<div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
-          <div className="bg-white rounded-2xl shadow-xl w-full max-w-md p-4">
+          <div className="bg-white rounded-2xl shadow-xl w-full max-w-md p-4 max-h-[90vh] overflow-y-auto">
             <div className="flex items-center justify-between mb-3"><h3 className="text-lg font-semibold">{initial?"Upravit místnost":"Nová místnost"}</h3><button onClick={onClose} className="p-2 rounded-full hover:bg-gray-100">✕</button></div>
             <div className="grid grid-cols-6 gap-2">
               <input className="col-span-3 border rounded-xl px-3 py-2" placeholder="Název" value={name} onChange={e=>setName(e.target.value)} />
@@ -96,7 +96,7 @@
         if(!open) return null;
         const isEquip=room?.type==="equipment", maxPieces=Math.max(1,room?.max||1);
         return(<div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30">
-          <div className="bg-white rounded-2xl shadow-xl w-full max-w-md p-4">
+          <div className="bg-white rounded-2xl shadow-xl w-full max-w-md p-4 max-h-[90vh] overflow-y-auto">
             <div className="flex items-center justify-between mb-3"><h3 className="text-lg font-semibold">{initial?"Upravit rezervaci":"Nová rezervace"}</h3><button onClick={onClose} className="p-2 rounded-full hover:bg-gray-100">✕</button></div>
             <label className="block text-sm mb-2">Učitel/ka
               <select className="w-full border rounded-xl px-3 py-2 mt-1" value={teacherId} onChange={e=>setTeacherId(e.target.value)}>
@@ -194,7 +194,7 @@
         const updateRoom=(id,patch)=>setState(s=>({...s,rooms:s.rooms.map(r=>r.id===id?{...r,...patch}:r)}));
         const removeRoom=(id)=>setState(s=>({...s,rooms:s.rooms.filter(r=>r.id!==id)}));
 
-        // drag & drop handlery (uvnitř App, mají přístup k setState)
+        // drag & drop handlery
         function onRoomDragStart(id){ setDragRoomId(id); setIsDraggingRoom(true); }
         function onRoomDragEnd(){ setIsDraggingRoom(false); setDragRoomId(null); }
         function onRoomDrop(targetId){
@@ -254,17 +254,33 @@
 
           {/* pracovní týden */}
           <section className="bg-white/80 rounded-2xl p-4">
-            <div className="grid grid-cols-5 text-center text-xs font-medium text-gray-600 mb-2">{["Po","Út","St","Čt","Pá"].map((n,i)=><div key={i} className="py-1">{n}</div>)}</div>
-            <div className="grid grid-cols-5 gap-2">
+            <div className="hidden sm:grid grid-cols-5 text-center text-xs font-medium text-gray-600 mb-2">
+              {["Po","Út","St","Čt","Pá"].map((n,i)=><div key={i} className="py-1">{n}</div>)}
+            </div>
+
+            {/* mobile: horizontální list, desktop: 5 sloupců */}
+            <div className="sm:grid sm:grid-cols-5 gap-2 flex overflow-x-auto -mx-2 px-2">
               {workweek.map(d=>{
                 const sel=isSameDay(d,selectedDate), items=daySummary(d);
-                return(<button key={d.toISOString()} onClick={()=>setSelectedDate(d)} className={`h-28 rounded-2xl border p-2 text-left bg-white hover:shadow ${sel?'ring-2 ring-fuchsia-400':''}`}>
-                  <div className="text-sm font-semibold">{shortDateCz(d)}</div>
-                  <div className="mt-1 flex flex-wrap gap-1">
-                    {items.length===0?<Badge className="bg-green-100 border border-green-400 text-green-800">volno</Badge>:
-                      items.map((it,idx)=><Badge key={idx} className={it.recurring?"bg-amber-100 border border-amber-400 text-amber-900":"bg-red-100 border border-red-400 text-red-800"}>{it.period}. {it.code}</Badge>)}
-                  </div>
-                </button>);
+                return(
+                  <button
+                    key={d.toISOString()}
+                    onClick={()=>setSelectedDate(d)}
+                    className={`sm:h-28 h-24 sm:w-auto w-40 shrink-0 rounded-2xl border p-2 text-left bg-white hover:shadow ${sel?'ring-2 ring-fuchsia-400':''}`}
+                  >
+                    <div className="text-sm font-semibold">{shortDateCz(d)}</div>
+                    <div className="mt-1 flex flex-wrap gap-1">
+                      {items.length===0
+                        ? <Badge className="bg-green-100 border border-green-400 text-green-800">volno</Badge>
+                        : items.map((it,idx)=>
+                          <Badge key={idx} className={it.recurring?"bg-amber-100 border border-amber-400 text-amber-900":"bg-red-100 border border-red-400 text-red-800"}>
+                            {it.period}. {it.code}
+                          </Badge>
+                        )
+                      }
+                    </div>
+                  </button>
+                );
               })}
             </div>
           </section>
@@ -272,51 +288,55 @@
           {/* denní plán */}
           <section className="bg-white/80 rounded-2xl p-4">
             <h2 className="text-lg font-semibold mb-2">{fullDateCz(selectedDate)}</h2>
-            <div className="overflow-auto">
-              <table className="w-full text-sm">
-                <thead><tr><th className="text-left p-2 sticky left-0 bg-white/90 backdrop-blur z-10">Učebna</th>{PERIODS.map(p=><th key={p} className="p-2 min-w-28 text-center">{p}. hod.</th>)}</tr></thead>
-                <tbody>
-                  {state.rooms.map(room=>(
-                    <tr key={room.id} className="odd:bg-white/60 even:bg-white/40">
-                      <th className="text-left p-2 sticky left-0 bg-white/80 backdrop-blur z-10">
-                        <div className="font-medium">{room.name}</div>
-                        {/* jen patro */}
-                        <div className="mt-0.5 flex gap-2 items-center text-xs text-gray-700">
-                          <span className="px-1.5 py-0.5 rounded bg-gray-100 border">{room.floor}</span>
-                        </div>
-                      </th>
-                      {PERIODS.map(p=>{
-                        const cell=effectivePlan?.[room.id]?.[p], isRecurring=!!cell?.recurringId;
-                        const baseCls=cell?(isRecurring?'bg-amber-100 border border-amber-400':'bg-red-100 border border-red-400'):'bg-green-100 border border-green-400';
-                        return(<td key={p} className="align-top p-1">
-                          <div className={`rounded-xl p-2 min-h-16 ${baseCls}`} onClick={()=>{
-                            if(cell){ setDialog({dateIso:selectedIso,roomId:room.id,period:p,initial:cell});}
-                            else{ setDialog({dateIso:selectedIso,roomId:room.id,period:p});}
-                          }}>
-                            {cell?(
-                              <div className="flex flex-col gap-1">
-                                <div className="font-medium flex items-center gap-2">
-                                  {state.teachers.find(t=>t.id===cell.teacherId)?.name||'?' }
-                                  {cell.pieces?<Badge className="bg-white/70 border text-xs">{cell.pieces} ks</Badge>:null}
-                                  {isRecurring&&<Badge className="bg-amber-200 border border-amber-500 text-amber-900">opak.</Badge>}
-                                </div>
-                                {cell.note&&<div className="text-xs">{cell.note}</div>}
-                                <div className="flex gap-2 mt-1">
-                                  {isRecurring?(
-                                    <button className="px-2 py-1 rounded-lg border text-xs" onClick={(e)=>{e.stopPropagation(); stopRecurring(cell.recurringId);}}>Zrušit opak.</button>
-                                  ):(
-                                    <button className="px-2 py-1 rounded-lg border text-xs" onClick={(e)=>{e.stopPropagation(); clearReservation(selectedIso,room.id,p);}}>Smazat</button>
-                                  )}
-                                </div>
-                              </div>
-                            ):<span className="w-full text-left text-xs block text-green-900">+ Přidat</span>}
+
+            {/* vodorovný scroll + min. šířka */}
+            <div className="-mx-2 sm:mx-0 overflow-x-auto">
+              <div className="min-w-[900px]">
+                <table className="w-full text-sm">
+                  <thead><tr><th className="text-left p-2 sticky left-0 bg-white/90 backdrop-blur z-10">Učebna</th>{PERIODS.map(p=><th key={p} className="p-2 min-w-28 text-center">{p}. hod.</th>)}</tr></thead>
+                  <tbody>
+                    {state.rooms.map(room=>(
+                      <tr key={room.id} className="odd:bg-white/60 even:bg-white/40">
+                        <th className="text-left p-2 sticky left-0 bg-white/80 backdrop-blur z-10">
+                          <div className="font-medium">{room.name}</div>
+                          {/* jen patro */}
+                          <div className="mt-0.5 flex gap-2 items-center text-xs text-gray-700">
+                            <span className="px-1.5 py-0.5 rounded bg-gray-100 border">{room.floor}</span>
                           </div>
-                        </td>);
-                      })}
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
+                        </th>
+                        {PERIODS.map(p=>{
+                          const cell=effectivePlan?.[room.id]?.[p], isRecurring=!!cell?.recurringId;
+                          const baseCls=cell?(isRecurring?'bg-amber-100 border border-amber-400':'bg-red-100 border border-red-400'):'bg-green-100 border border-green-400';
+                          return(<td key={p} className="align-top p-1">
+                            <div className={`rounded-xl p-2 min-h-16 ${baseCls}`} onClick={()=>{
+                              if(cell){ setDialog({dateIso:selectedIso,roomId:room.id,period:p,initial:cell});}
+                              else{ setDialog({dateIso:selectedIso,roomId:room.id,period:p});}
+                            }}>
+                              {cell?(
+                                <div className="flex flex-col gap-1">
+                                  <div className="font-medium flex items-center gap-2">
+                                    {state.teachers.find(t=>t.id===cell.teacherId)?.name||'?' }
+                                    {cell.pieces?<Badge className="bg-white/70 border text-xs">{cell.pieces} ks</Badge>:null}
+                                    {isRecurring&&<Badge className="bg-amber-200 border border-amber-500 text-amber-900">opak.</Badge>}
+                                  </div>
+                                  {cell.note&&<div className="text-xs">{cell.note}</div>}
+                                  <div className="flex gap-2 mt-1">
+                                    {isRecurring?(
+                                      <button className="px-2 py-1 rounded-lg border text-xs" onClick={(e)=>{e.stopPropagation(); stopRecurring(cell.recurringId);}}>Zrušit opak.</button>
+                                    ):(
+                                      <button className="px-2 py-1 rounded-lg border text-xs" onClick={(e)=>{e.stopPropagation(); clearReservation(selectedIso,room.id,p);}}>Smazat</button>
+                                    )}
+                                  </div>
+                                </div>
+                              ):<span className="w-full text-left text-xs block text-green-900">+ Přidat</span>}
+                            </div>
+                          </td>);
+                        })}
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
             </div>
           </section>
 
@@ -342,10 +362,22 @@
                     key={r.id}
                     className="flex items-center justify-between rounded-xl border bg-white/70 px-3 py-2 cursor-move select-none"
                     draggable
-                    onDragStart={()=>onRoomDragStart(r.id)}
-                    onDragEnd={onRoomDragEnd}
+                    onDragStart={()=>{ setDragRoomId(r.id); setIsDraggingRoom(true); }}
+                    onDragEnd={()=>{ setIsDraggingRoom(false); setDragRoomId(null); }}
                     onDragOver={(e)=>e.preventDefault()}
-                    onDrop={()=>onRoomDrop(r.id)}
+                    onDrop={()=>{
+                      setState((s)=>{
+                        if(!dragRoomId || dragRoomId===r.id) return s;
+                        const newRooms=[...s.rooms];
+                        const from=newRooms.findIndex(x=>x.id===dragRoomId);
+                        const to=newRooms.findIndex(x=>x.id===r.id);
+                        if(from<0||to<0) return s;
+                        const [moved]=newRooms.splice(from,1);
+                        newRooms.splice(to,0,moved);
+                        return {...s, rooms:newRooms};
+                      });
+                      setIsDraggingRoom(false); setDragRoomId(null);
+                    }}
                     onClick={()=>{ if(!isDraggingRoom) setEditingRoom(r); }}
                   >
                     <div>
