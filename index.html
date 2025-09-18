@@ -535,6 +535,12 @@
           }
         };
 
+        // ===== WORKWEEK =====
+        const workweek = useMemo(()=>{
+          const start = startOfWeek(selectedDate);
+          return [0,1,2,3,4].map(off=>addDays(start,off));
+        }, [selectedDate]);
+
         // ===== AUTH stavy =====
         if(loadingAuth){
           return <div className="max-w-3xl mx-auto p-8">Načítám přihlášení…</div>;
@@ -567,13 +573,7 @@
             </div>
           );
         }
-
-        // ===== WORKWEEK =====
-        const workweek = useMemo(()=>{
-          const start = startOfWeek(selectedDate);
-          return [0,1,2,3,4].map(off=>addDays(start,off));
-        }, [selectedDate]);
-
+        
         /*********************
          * Render APP
          *********************/
