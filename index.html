@@ -39,10 +39,6 @@
         a.getFullYear() === b.getFullYear() &&
         a.getMonth() === b.getMonth() &&
         a.getDate() === b.getDate();
-      const getISODay = (d) => {
-        const g = d.getDay();
-        return g === 0 ? 7 : g;
-      };
       const fullDateCz = (d) =>
         d.toLocaleDateString("cs-CZ", {
           weekday: "long",
@@ -53,11 +49,20 @@
       const shortDateCz = (d) =>
         d.toLocaleDateString("cs-CZ", { day: "numeric", month: "numeric" });
 
+      // Bezpečný rozdíl dnů (na půlnoci v UTC), pro % 7
+      const dayDiff = (aISO, bISO) => {
+        const A = parseISO(aISO);
+        const B = parseISO(bISO);
+        const AM = Date.UTC(A.getFullYear(), A.getMonth(), A.getDate());
+        const BM = Date.UTC(B.getFullYear(), B.getMonth(), B.getDate());
+        return Math.floor((AM - BM) / 86400000);
+      };
+
       // ====== Aplikace ======
-      const { useState, useEffect, useMemo, useRef } = React;
-      const PERIODS = ["0", "1", "2", "3", "4", "5", "6", "7", "8"];
+      const { useState, useEffect, useMemo } = React;
+      const PERIODS = ["0","1","2","3","4","5","6","7","8"];
       const STORAGE_KEY = "rezervace-chromebooku-state-v1";
-      const uid = (p = "id") => `${p}_${Math.random().toString(36).slice(2, 10)}`;
+      const uid = (p="id") => `${p}_${Math.random().toString(36).slice(2,10)}`;
 
       const defaultState = {
         teachers: [
@@ -71,7 +76,8 @@
         ],
         // 'YYYY-MM-DD': { [roomId]: { [period]: { teacherId, pieces?, note? } } }
         reservations: {},
-        // opakované: { id, weekday(1-7), roomId, period, teacherId, pieces?, note?, startISO, endISO? }
+        // opakované: { id, roomId, period, teacherId, pieces?, note?, startISO, endISO? }
+        // (den v týdnu už neukládám; počítám přes rozdíl dnů % 7)
         recurring: [],
       };
       const loadState = () => {
@@ -89,6 +95,97 @@
         </span>
       );
 
+      // ---- Modální dialog – výběr data ----
+      function DateModal({ open, valueISO, onClose, onChange }) {
+        if (!open) return null;
+        return (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
+            <div className="bg-white rounded-2xl shadow-xl w-full max-w-sm p-4">
+              <div className="flex items-center justify-between mb-3">
+                <h3 className="text-lg font-semibold">Vyber datum</h3>
+                <button onClick={onClose} className="p-2 rounded-full hover:bg-gray-100">
+                  ✕
+                </button>
+              </div>
+              <input
+                type="date"
+                className="w-full border rounded-xl px-3 py-2"
+                value={valueISO}
+                onChange={(e) => onChange(e.target.value)}
+              />
+              <div className="flex justify-end mt-3">
+                <button onClick={onClose} className="px-3 py-2 rounded-xl border">
+                  Hotovo
+                </button>
+              </div>
+            </div>
+          </div>
+        );
+      }
+
+      // ---- Modální dialog – úprava učebny ----
+      function RoomDialog({ open, initial, onClose, onSave }) {
+        const [name, setName] = useState("");
+        const [floor, setFloor] = useState("");
+        const [code, setCode] = useState("");
+
+        useEffect(() => {
+          if (open && initial) {
+            setName(initial.name || "");
+            setFloor(initial.floor || "");
+            setCode(initial.code || "");
+          }
+        }, [open, initial]);
+
+        if (!open) return null;
+        return (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
+            <div className="bg-white rounded-2xl shadow-xl w-full max-w-md p-4">
+              <div className="flex items-center justify-between mb-3">
+                <h3 className="text-lg font-semibold">Upravit učebnu</h3>
+                <button onClick={onClose} className="p-2 rounded-full hover:bg-gray-100">
+                  ✕
+                </button>
+              </div>
+
+              <div className="grid grid-cols-6 gap-2">
+                <input
+                  className="col-span-3 border rounded-xl px-3 py-2"
+                  placeholder="Název"
+                  value={name}
+                  onChange={(e) => setName(e.target.value)}
+                />
+                <input
+                  className="col-span-2 border rounded-xl px-3 py-2"
+                  placeholder="Patro"
+                  value={floor}
+                  onChange={(e) => setFloor(e.target.value)}
+                />
+                <input
+                  className="col-span-1 border rounded-xl px-3 py-2"
+                  placeholder="Zkratka"
+                  value={code}
+                  onChange={(e) => setCode(e.target.value)}
+                />
+              </div>
+
+              <div className="flex justify-end gap-2 mt-4">
+                <button onClick={onClose} className="px-3 py-2 rounded-xl border">
+                  Zrušit
+                </button>
+                <button
+                  onClick={() => onSave({ name, floor, code })}
+                  className="px-3 py-2 rounded-xl bg-black text-white"
+                >
+                  Uložit
+                </button>
+              </div>
+            </div>
+          </div>
+        );
+      }
+
+      // ---- Dialog pro rezervaci (beze změn, jen kosmetika) ----
       function ReservationDialog({ open, onClose, onSave, teachers, initial }) {
         const [teacherId, setTeacherId] = useState(
           initial?.teacherId || teachers[0]?.id || ""
@@ -183,24 +280,25 @@
       function App() {
         const [state, setState] = useState(loadState);
         const [selectedDate, setSelectedDate] = useState(new Date());
-        const [dialog, setDialog] = useState(null); // { dateIso, roomId, period, initial? }
+        const [dialog, setDialog] = useState(null);      // {dateIso, roomId, period, initial?}
         const [showSettings, setShowSettings] = useState(false);
-        const datePickerRef = useRef(null);
+        const [dateModal, setDateModal] = useState(false);
+        const [editingRoom, setEditingRoom] = useState(null);
+
         useEffect(() => saveState(state), [state]);
 
         const selectedIso = toISO(selectedDate);
 
-        // Aplikovat opakované rezervace na vybraný den
+        // Aplikovat opakované rezervace pro daný den
         const effectivePlan = useMemo(() => {
-          const plan = JSON.parse(
-            JSON.stringify(state.reservations[selectedIso] || {})
-          );
-          const weekday = getISODay(selectedDate);
+          const plan = JSON.parse(JSON.stringify(state.reservations[selectedIso] || {}));
           state.recurring.forEach((r) => {
-            if (r.weekday !== weekday) return;
-            const startOk = !r.startISO || parseISO(selectedIso) >= parseISO(r.startISO);
-            const endOk = !r.endISO || parseISO(selectedIso) <= parseISO(r.endISO);
-            if (!startOk || !endOk) return;
+            const diff = dayDiff(selectedIso, r.startISO);
+            const inRange =
+              diff >= 0 &&
+              diff % 7 === 0 &&
+              (!r.endISO || dayDiff(r.endISO, selectedIso) >= 0);
+            if (!inRange) return;
             plan[r.roomId] ||= {};
             if (!plan[r.roomId][r.period]) {
               plan[r.roomId][r.period] = {
@@ -212,7 +310,7 @@
             }
           });
           return plan;
-        }, [state, selectedIso, selectedDate]);
+        }, [state, selectedIso]);
 
         // pracovní týden (Po–Pá)
         const workweek = useMemo(() => {
@@ -223,7 +321,6 @@
         // náhledy pro den: [{period, code, recurring}]
         function daySummaryDetailed(date) {
           const iso = toISO(date);
-          const weekday = getISODay(date);
           const items = [];
           const direct = state.reservations[iso] || {};
           Object.entries(direct).forEach(([roomId, slots]) => {
@@ -236,10 +333,12 @@
             });
           });
           state.recurring.forEach((r) => {
-            if (r.weekday !== weekday) return;
-            const startOk = !r.startISO || parseISO(iso) >= parseISO(r.startISO);
-            const endOk = !r.endISO || parseISO(iso) <= parseISO(r.endISO);
-            if (!startOk || !endOk) return;
+            const diff = dayDiff(iso, r.startISO);
+            const inRange =
+              diff >= 0 &&
+              diff % 7 === 0 &&
+              (!r.endISO || dayDiff(r.endISO, iso) >= 0);
+            if (!inRange) return;
             items.push({
               period: r.period,
               code: state.rooms.find((x) => x.id === r.roomId)?.code || "?",
@@ -257,6 +356,7 @@
           setState((s) => ({ ...s, teachers: [...s.teachers, { id: uid("t"), name }] }));
         const removeTeacher = (id) =>
           setState((s) => ({ ...s, teachers: s.teachers.filter((t) => t.id !== id) }));
+
         const addRoom = (name, floor, code) =>
           setState((s) => ({
             ...s,
@@ -264,6 +364,11 @@
               ...s.rooms,
               { id: uid("r"), name, floor, code: code || name.slice(0, 2).toUpperCase() },
             ],
+          }));
+        const updateRoom = (id, patch) =>
+          setState((s) => ({
+            ...s,
+            rooms: s.rooms.map((r) => (r.id === id ? { ...r, ...patch } : r)),
           }));
         const removeRoom = (id) =>
           setState((s) => ({ ...s, rooms: s.rooms.filter((r) => r.id !== id) }));
@@ -285,7 +390,6 @@
                 ...s.recurring,
                 {
                   id: uid("rec"),
-                  weekday: getISODay(parseISO(dateIso)),
                   roomId,
                   period,
                   teacherId: payload.teacherId,
@@ -315,16 +419,6 @@
         const [newTeacher, setNewTeacher] = useState("");
         const [newRoom, setNewRoom] = useState({ name: "", floor: "", code: "" });
 
-        // date picker (nativní)
-        const openDatePicker = () => {
-          if (datePickerRef.current?.showPicker) datePickerRef.current.showPicker();
-          else datePickerRef.current?.click();
-        };
-        const onPickDate = (e) => {
-          const v = e.target.value;
-          if (v) setSelectedDate(parseISO(v));
-        };
-
         return (
           <div className="p-4 max-w-7xl mx-auto grid gap-4">
             {/* Horní lišta */}
@@ -338,7 +432,7 @@
                   ◀ Týden
                 </button>
                 <button
-                  onClick={openDatePicker}
+                  onClick={() => setDateModal(true)}
                   className="px-3 py-2 rounded-xl border bg-white"
                 >
                   📅 Datum
@@ -358,13 +452,12 @@
               </div>
             </header>
 
-            {/* skrytý nativní date picker */}
-            <input
-              ref={datePickerRef}
-              type="date"
-              className="hidden"
-              value={selectedIso}
-              onChange={onPickDate}
+            {/* Modal s výběrem data */}
+            <DateModal
+              open={dateModal}
+              valueISO={selectedIso}
+              onClose={() => setDateModal(false)}
+              onChange={(v) => v && setSelectedDate(parseISO(v))}
             />
 
             {/* Pracovní týden (Po–Pá) s přehledem rezervací */}
@@ -379,7 +472,7 @@
               <div className="grid grid-cols-5 gap-2">
                 {workweek.map((d) => {
                   const sel = isSameDay(d, selectedDate);
-                  const items = daySummaryDetailed(d); // [{period, code, recurring}]
+                  const items = daySummaryDetailed(d);
                   return (
                     <button
                       key={d.toISOString()}
@@ -432,14 +525,17 @@
                     {state.rooms.map((room) => (
                       <tr key={room.id} className="odd:bg-white/60 even:bg-white/40">
                         <th className="text-left p-2 sticky left-0 bg-white/80 backdrop-blur z-10">
-                          <div className="font-medium">
-                            {room.name}{" "}
-                            <span className="text-xs ml-1 px-1.5 py-0.5 rounded bg-gray-100 border">
+                          <div className="font-medium">{room.name}</div>
+                          <div className="mt-0.5 flex gap-2 items-center text-xs text-gray-700">
+                            <span className="px-1.5 py-0.5 rounded bg-gray-100 border">
                               {room.code}
                             </span>
+                            <span className="px-1.5 py-0.5 rounded bg-gray-100 border">
+                              {room.floor}
+                            </span>
                           </div>
-                          <div className="text-xs text-gray-600">{room.floor}</div>
                         </th>
+
                         {PERIODS.map((p) => {
                           const cell = effectivePlan?.[room.id]?.[p];
                           const isRecurring = !!cell?.recurringId;
@@ -579,7 +675,7 @@
                       onChange={(e) => setNewRoom((v) => ({ ...v, name: e.target.value }))}
                     />
                     <input
-                      className="col-span-1 border rounded-xl px-3 py-2"
+                      className="col-span-2 border rounded-xl px-3 py-2"
                       placeholder="Patro"
                       value={newRoom.floor}
                       onChange={(e) => setNewRoom((v) => ({ ...v, floor: e.target.value }))}
@@ -613,21 +709,30 @@
                         className="flex items-center justify-between rounded-xl border bg-white/70 px-3 py-2"
                       >
                         <div>
-                          <div className="font-medium">
-                            {r.name}{" "}
-                            <span className="text-xs ml-1 px-1.5 py-0.5 rounded bg-gray-100 border">
+                          <div className="font-medium">{r.name}</div>
+                          <div className="mt-0.5 flex gap-2 items-center text-xs text-gray-700">
+                            <span className="px-1.5 py-0.5 rounded bg-gray-100 border">
                               {r.code}
                             </span>
+                            <span className="px-1.5 py-0.5 rounded bg-gray-100 border">
+                              {r.floor}
+                            </span>
                           </div>
-                          <div className="text-xs text-gray-600">{r.floor}</div>
                         </div>
-                        <button
-                          className="p-2 rounded-lg hover:bg-gray-100"
-                          onClick={() => removeRoom(r.id)}
-                          title="Odebrat"
-                        >
-                          ✕
-                        </button>
+                        <div className="flex gap-2">
+                          <button
+                            className="px-2 py-1 rounded-lg border text-xs"
+                            onClick={() => setEditingRoom(r)}
+                          >
+                            Upravit
+                          </button>
+                          <button
+                            className="px-2 py-1 rounded-lg border text-xs text-red-700"
+                            onClick={() => removeRoom(r.id)}
+                          >
+                            Smazat
+                          </button>
+                        </div>
                       </div>
                     ))}
                   </div>
@@ -647,8 +752,7 @@
                       >
                         <div className="text-sm">
                           <span className="font-medium">
-                            {["Po", "Út", "St", "Čt", "Pá", "So", "Ne"][r.weekday - 1]} {r.period}.
-                            hod. – {state.rooms.find((x) => x.id === r.roomId)?.name}
+                            {state.rooms.find((x) => x.id === r.roomId)?.name}
                           </span>
                           {" · "}
                           {state.teachers.find((t) => t.id === r.teacherId)?.name}
@@ -669,7 +773,7 @@
               </section>
             )}
 
-            {/* Dialog pro rezervaci */}
+            {/* Dialogy */}
             <ReservationDialog
               open={!!dialog}
               onClose={() => setDialog(null)}
@@ -677,6 +781,15 @@
               initial={dialog?.initial}
               onSave={(payload) => {
                 upsertReservation(dialog.dateIso, dialog.roomId, dialog.period, payload);
+              }}
+            />
+            <RoomDialog
+              open={!!editingRoom}
+              initial={editingRoom}
+              onClose={() => setEditingRoom(null)}
+              onSave={(patch) => {
+                updateRoom(editingRoom.id, patch);
+                setEditingRoom(null);
               }}
             />
           </div>
