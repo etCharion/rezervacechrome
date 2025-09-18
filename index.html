@@ -26,7 +26,7 @@
 
     <script type="text/babel">
       /****************************************************
-       * Utilitky
+       * Utilitky + UI drobnosti
        ****************************************************/
       const { useState, useEffect, useMemo } = React;
 
@@ -65,19 +65,89 @@
         messagingSenderId: "331678302051",
         appId: "1:331678302051:web:6662a934039c9667629d56"
       };
-
-      if (!firebaseConfig.apiKey) {
-        document.body.innerHTML = '<div style="padding:24px;font-family:ui-sans-serif,system-ui">\
-          <h1 style="font-size:20px;font-weight:700;margin:0 0 8px">Firebase není nastavený</h1>\
-          <p style="margin:0 0 8px">V souboru <code>index.html</code> doplňte objekt <code>firebaseConfig</code> údaji z Firebase konzole.</p>\
-          <p style="margin:0">Poté stránku načtěte znovu.</p>\
-        </div>';
-        throw new Error('Firebase config missing');
-      }
-
       const app = firebase.initializeApp(firebaseConfig);
       const auth = firebase.auth();
       const db   = firebase.firestore();
+
+      /****************************************************
+       * Re-usable karty (login/loading/pending)
+       ****************************************************/
+      function LoadingCard() {
+        return (
+          <div className="min-h-[60vh] grid place-items-center">
+            <div className="rounded-2xl bg-white/80 p-6 shadow">Načítám…</div>
+          </div>
+        );
+      }
+      function LoginCard({ onSignIn }) {
+        return (
+          <div className="min-h-[60vh] grid place-items-center">
+            <div className="rounded-2xl bg-white/80 p-6 shadow flex flex-col gap-3 items-start">
+              <h2 className="text-xl font-semibold">Přihlášení</h2>
+              <button onClick={onSignIn} className="px-3 py-2 rounded-xl border bg-white">
+                Přihlásit se Googlem
+              </button>
+            </div>
+          </div>
+        );
+      }
+      function PendingCard({ email, onSignOut }) {
+        return (
+          <div className="min-h-[60vh] grid place-items-center">
+            <div className="rounded-2xl bg-white/80 p-6 shadow flex flex-col gap-3">
+              <h2 className="text-xl font-semibold">Účet čeká na schválení</h2>
+              <p className="text-sm text-gray-600">Přihlášen: {email}</p>
+              <button onClick={onSignOut} className="px-3 py-2 rounded-xl border bg-white">Odhlásit</button>
+            </div>
+          </div>
+        );
+      }
+
+      /****************************************************
+       * AuthGate – jediná komponenta, co řeší přihlášení
+       ****************************************************/
+      function AuthGate({ children }) {
+        const [phase, setPhase] = React.useState('loading'); // 'loading' | 'signed-out' | 'pending' | 'ok'
+        const [user, setUser] = React.useState(null);
+        const [profile, setProfile] = React.useState(null);
+
+        React.useEffect(() => {
+          return auth.onAuthStateChanged(async (u) => {
+            if (!u) {
+              setUser(null); setProfile(null); setPhase('signed-out'); return;
+            }
+            // /users bootstrap
+            const ref = db.collection('users').doc(u.uid);
+            await ref.set({
+              email: u.email || '',
+              displayName: u.displayName || (u.email? u.email.split('@')[0] : 'Uživatel'),
+              lastLogin: firebase.firestore.FieldValue.serverTimestamp(),
+            }, { merge: true });
+
+            // První admin
+            if (u.email === 'dgunka@gymnaziumbma.cz') {
+              await ref.set({ isAdmin: true, approved: true, bootstrapped: true }, { merge: true });
+            }
+
+            const snap = await ref.get();
+            const data = snap.data() || {};
+            setUser(u); setProfile(data);
+            setPhase(data.approved ? 'ok' : 'pending');
+          });
+        }, []);
+
+        const signIn = React.useCallback(() => {
+          const provider = new firebase.auth.GoogleAuthProvider();
+          auth.signInWithPopup(provider);
+        }, []);
+        const signOut = React.useCallback(() => auth.signOut(), []);
+
+        if (phase === 'loading') return <LoadingCard />;
+        if (phase === 'signed-out') return <LoginCard onSignIn={signIn} />;
+        if (phase === 'pending') return <PendingCard email={auth.currentUser?.email} onSignOut={signOut} />;
+
+        return children({ user, profile, signOut });
+      }
 
       /****************************************************
        * Dialogy – Datum, Místnost, Rezervace
@@ -243,17 +313,11 @@
       }
 
       /****************************************************
-       * App – online režim s Firestore a rolemi
+       * CalendarApp – tvoje appka bez auth hooků
        ****************************************************/
-      function App(){
+      function CalendarApp({ user, profile, signOut }) {
         const [selectedDate,setSelectedDate]=useState(new Date());
         const selectedIso = toISO(selectedDate);
-
-        // Auth & role
-        const [authUser,setAuthUser]=useState(null);  // Firebase user
-        const [me,setMe]=useState(null);              // /users/{uid}
-        const [loadingAuth,setLoadingAuth]=useState(true);
-        const [waitingApproval,setWaitingApproval]=useState(false);
 
         // Data
         const [rooms,setRooms]=useState([]);
@@ -266,50 +330,14 @@
         const [editingRoom,setEditingRoom]=useState(null);
         const [creatingRoom,setCreatingRoom]=useState(false);
         const [dialog,setDialog]=useState(null); // {dateIso,roomId,period,initial?, editingRecurringId?}
-        const [newTeacher,setNewTeacher]=useState("");
-
-        // DnD pro místnosti – jen UI pořadí (nepersistuje)
+        // DnD pořadí (lokálně)
         const [dragRoomId, setDragRoomId] = useState(null);
         const [isDraggingRoom, setIsDraggingRoom] = useState(false);
 
-        // ===== AUTH =====
+        const isAdmin = !!profile?.isAdmin;
+
+        // Uživatelé
         useEffect(()=>{
-          const unsub = auth.onAuthStateChanged(async (u)=>{
-            setAuthUser(u);
-            if(!u){ setMe(null); setWaitingApproval(false); setLoadingAuth(false); return; }
-
-            // vytvoř/načti profil v /users/{uid}
-            const ref = db.collection('users').doc(u.uid);
-            const exists = await ref.get();
-
-            // Auto-admin pro dgunka@gymnaziumbma.cz při prvním přihlášení
-            const isBootstrapAdmin = (u.email === 'dgunka@gymnaziumbma.cz');
-
-            if(!exists.exists){
-              await ref.set({
-                email: u.email || '',
-                displayName: u.displayName || (u.email? u.email.split('@')[0] : 'Uživatel'),
-                isAdmin: isBootstrapAdmin,
-                approved: isBootstrapAdmin,    // admin je rovnou schválen
-                createdAt: firebase.firestore.FieldValue.serverTimestamp(),
-              }, {merge:true});
-            } else if (isBootstrapAdmin) {
-              // kdyby dokument existoval dřív, zajisti, že má admin/approved
-              await ref.set({ isAdmin: true, approved: true }, { merge: true });
-            }
-
-            const snap = await ref.get();
-            const data = snap.data();
-            setMe(data);
-            setWaitingApproval(!data.approved);
-            setLoadingAuth(false);
-          });
-          return () => unsub && unsub();
-        },[]);
-
-        // Uživatelé (učitelé = approved users)
-        useEffect(()=>{
-          if(!authUser || !me || waitingApproval) return;
           const unsubUsers = db.collection('users').onSnapshot((q)=>{
             const list = q.docs.map(d=>({id:d.id, ...d.data()}));
             setAllUsers(list);
@@ -317,20 +345,18 @@
             setTeachers(allowed.map(u=>({id:u.id, name: u.displayName || u.email})));
           });
           return () => unsubUsers && unsubUsers();
-        },[!!authUser, !!me, waitingApproval]);
+        },[]);
 
         // Rooms
         useEffect(()=>{
-          if(!authUser || !me || waitingApproval) return;
           const unsub = db.collection('rooms').orderBy('name','asc').onSnapshot(q=>{
             setRooms(q.docs.map(d=>({id:d.id,...d.data()})));
           });
           return () => unsub && unsub();
-        },[!!authUser, !!me, waitingApproval]);
+        },[]);
 
         // Reservations pro vybraný den
         useEffect(()=>{
-          if(!authUser || !me || waitingApproval) return;
           const unsub = db.collection('reservations').where('dateISO','==',selectedIso).onSnapshot(q=>{
             const dayMap = {};
             q.docs.forEach(d=>{
@@ -341,31 +367,30 @@
             setReservations(dayMap);
           });
           return () => unsub && unsub();
-        },[!!authUser, !!me, waitingApproval, selectedIso]);
+        },[selectedIso]);
 
         // Recurring (celé; filtrujeme na klientu)
         useEffect(()=>{
-          if(!authUser || !me || waitingApproval) return;
           const unsub = db.collection('recurring').onSnapshot(q=>{
             setRecurring(q.docs.map(d=>({id:d.id, ...d.data()})));
           });
           return () => unsub && unsub();
-        },[!!authUser, !!me, waitingApproval]);
+        },[]);
 
-        // ===== occursOn =====
+        // occursOn
         function occursOn(dateISO, rec){
           if (cmpISO(dateISO, rec.startISO) < 0) return false;
           const days = diffDays(dateISO, rec.startISO);
           if (days % 7 !== 0) return false;
           if (rec.mode === 'weeks' && typeof rec.weeks === 'number'){
             const weekIndex = Math.floor(days / 7);
-            return weekIndex >= 0 && weekIndex < rec.weeks;
+            return weekIndex >= 0 && weekIndex < rec.weeks; // včetně prvního týdne
           }
           if (rec.endISO && cmpISO(dateISO, rec.endISO) > 0) return false;
           return true;
         }
 
-        // ===== Effective plan =====
+        // Effective plan
         const effectivePlan = useMemo(()=>{
           const plan = JSON.parse(JSON.stringify(reservations || {}));
           (recurring || []).forEach(r=>{
@@ -385,7 +410,7 @@
           return plan;
         }, [reservations, recurring, selectedIso]);
 
-        // ===== Týdenní panel – přehled dne =====
+        // Týdenní panel – přehled dne (jen opakování)
         function daySummary(date){
           const iso = toISO(date), items=[];
           (recurring||[]).forEach(r=>{
@@ -396,21 +421,21 @@
           return items;
         }
 
-        // ===== CRUD – rooms (admin) =====
+        // CRUD – rooms (admin)
         const addRoom = async (payload)=> await db.collection('rooms').add(payload);
         const updateRoom = async (id, patch)=> await db.collection('rooms').doc(id).set(patch, {merge:true});
         const removeRoom = async (id)=> await db.collection('rooms').doc(id).delete();
 
-        // ===== CRUD – reservations/recurring =====
+        // CRUD – reservations/recurring
         async function upsertReservation(dateIso, roomId, period, payload, editingRecurringId=null){
-          const userId = authUser?.uid || 'unknown';
+          const userId = user?.uid || 'unknown';
 
           if(payload.repeat || editingRecurringId){
             const origSnap = editingRecurringId ? await db.collection('recurring').doc(editingRecurringId).get() : null;
             const seriesStartISO = (origSnap && origSnap.exists) ? origSnap.data().startISO : dateIso;
 
             if(payload.repeat){
-              // Smazat případný single-slot v den startu (aby se nedubloval s opakováním)
+              // smazat single na startu (ať se nedubluje)
               const daySnap = await db.collection('reservations')
                 .where('dateISO','==', dateIso)
                 .where('roomId','==', roomId)
@@ -448,7 +473,7 @@
               });
             }
           } else {
-            // Jednorázová rezervace
+            // jednorázová
             await db.collection('reservations').add({
               dateISO: dateIso, roomId, period,
               teacherId: payload.teacherId, pieces: payload.pieces, note: payload.note,
@@ -470,10 +495,6 @@
           await db.collection('recurring').doc(id).delete();
         }
 
-        // ===== UI hlavička (login/out) =====
-        const canUseApp = !!authUser && !!me && me.approved;
-        const isAdmin = !!me?.isAdmin;
-
         const openCell = (room, period)=>{
           const cell = effectivePlan?.[room.id]?.[period];
           if(cell){
@@ -488,51 +509,15 @@
           }
         };
 
-        // ===== AUTH stavy =====
-        if(loadingAuth){
-          return <div className="max-w-3xl mx-auto p-8">Načítám přihlášení…</div>;
-        }
-        if(!authUser){
-          return (
-            <div className="min-h-[70vh] flex items-center justify-center p-6">
-              <div className="bg-white/80 rounded-2xl shadow p-6 max-w-md w-full">
-                <h1 className="text-2xl font-bold mb-4">Rezervace Chromebooků a učeben</h1>
-                <p className="mb-4 text-gray-700">Pro pokračování se přihlas svým Google účtem.</p>
-                <button
-                  className="px-4 py-2 rounded-xl bg-black text-white w-full"
-                  onClick={()=> auth.signInWithPopup(new firebase.auth.GoogleAuthProvider())}
-                >Přihlásit se Googlem</button>
-              </div>
-            </div>
-          );
-        }
-        if(authUser && !canUseApp){
-          return (
-            <div className="min-h-[70vh] flex items-center justify-center p-6">
-              <div className="bg-white/80 rounded-2xl shadow p-6 max-w-md w-full">
-                <h1 className="text-2xl font-bold mb-2">Účet čeká na schválení</h1>
-                <p className="text-gray-700">Tento účet zatím není schválený administrátorem.</p>
-                <div className="mt-4 text-sm text-gray-600">Přihlášen: {authUser.email}</div>
-                <div className="mt-6 flex gap-2">
-                  <button className="px-3 py-2 rounded-xl border" onClick={()=>auth.signOut()}>Odhlásit</button>
-                </div>
-              </div>
-            </div>
-          );
-        }
-
-        // ===== WORKWEEK =====
+        // WORKWEEK
         const workweek = useMemo(()=>{
           const start = startOfWeek(selectedDate);
           return [0,1,2,3,4].map(off=>addDays(start,off));
         }, [selectedDate]);
 
-        /*********************
-         * Render APP
-         *********************/
+        // Render
         return (
           <div className="p-4 max-w-7xl mx-auto grid gap-4">
-            {/* horní lišta */}
             <header className="flex items-center justify-between">
               <h1 className="text-2xl font-bold">Rezervace Chromebooků a učeben</h1>
               <div className="flex items-center gap-2">
@@ -540,14 +525,12 @@
                 <button onClick={()=>setDateModal(true)} className="px-3 py-2 rounded-xl border bg-white">📅 Datum</button>
                 <button onClick={()=>setSelectedDate(addWeeks(selectedDate,1))} className="px-3 py-2 rounded-xl border bg-white">Týden ▶</button>
                 <button onClick={()=>setShowSettings(s=>!s)} className="px-3 py-2 rounded-xl border bg-white">{showSettings?'Skrýt nastavení':'Nastavení'}</button>
-                <button onClick={()=>auth.signOut()} className="px-3 py-2 rounded-xl border bg-white">Odhlásit</button>
+                <button onClick={signOut} className="px-3 py-2 rounded-xl border bg-white">Odhlásit</button>
               </div>
             </header>
 
-            {/* modal datum */}
             <DateModal open={dateModal} valueISO={toISO(selectedDate)} onClose={()=>setDateModal(false)} onChange={(v)=>v&&setSelectedDate(parseISO(v))}/>
 
-            {/* pracovní týden – mobilní horizontální scroll */}
             <section className="bg-white/80 rounded-2xl p-4">
               <div className="hidden sm:grid grid-cols-5 text-center text-xs font-medium text-gray-600 mb-2">{["Po","Út","St","Čt","Pá"].map((n,i)=><div key={i} className="py-1">{n}</div>)}</div>
               <div className="sm:grid sm:grid-cols-5 gap-2 flex overflow-x-auto -mx-2 px-2">
@@ -557,13 +540,13 @@
                     <button key={d.toISOString()} onClick={()=>setSelectedDate(d)} className={`sm:h-28 h-24 sm:w-auto w-40 shrink-0 rounded-2xl border p-2 text-left bg-white hover:shadow ${sel?'ring-2 ring-fuchsia-400':''}`}>
                       <div className="text-sm font-semibold">{shortDateCz(d)}</div>
                       <div className="mt-1 flex flex-wrap gap-1">
-                        {items.length===0?<Badge className="bg-green-100 border border-green-400 text-green-800">volno</Badge>:
-                          items.map((it,idx)=>{
-                            const cls = it.kind==='rec-blue' ? "bg-blue-100 border border-blue-400 text-blue-800"
-                                      : "bg-amber-100 border border-amber-400 text-amber-900";
-                            return <Badge key={idx} className={cls}>{it.period}. {it.code}</Badge>;
-                          })
-                        }
+                        {items.length===0
+                          ? <Badge className="bg-green-100 border border-green-400 text-green-800">volno</Badge>
+                          : items.map((it,idx)=>{
+                              const cls = it.kind==='rec-blue' ? "bg-blue-100 border border-blue-400 text-blue-800"
+                                        : "bg-amber-100 border border-amber-400 text-amber-900";
+                              return <Badge key={idx} className={cls}>{it.period}. {it.code}</Badge>;
+                            })}
                       </div>
                     </button>
                   );
@@ -571,7 +554,6 @@
               </div>
             </section>
 
-            {/* denní plán */}
             <section className="bg-white/80 rounded-2xl p-4">
               <h2 className="text-lg font-semibold mb-2">{fullDateCz(selectedDate)}</h2>
               <div className="-mx-2 sm:mx-0 overflow-x-auto">
@@ -594,23 +576,10 @@
                             const cls = !cell ? CELLCLS.free
                                       : isRecurring ? (recurringBlue ? CELLCLS.recBlue : CELLCLS.recAmber)
                                       : CELLCLS.single;
-                            // práva: admin vždy; jinak pouze autor single rezervace
-                            const canDelete = isAdmin || (cell?.createdBy && authUser?.uid && cell.createdBy===authUser.uid);
+                            const canDelete = isAdmin || (cell?.createdBy && user?.uid && cell.createdBy===user.uid);
                             return (
                               <td key={p} className="align-top p-1">
-                                <div className={`rounded-xl p-2 min-h-16 ${cls}`} onClick={()=>{
-                                  const c = effectivePlan?.[room.id]?.[p];
-                                  if(c){
-                                    if(c.recurringId){
-                                      const rec = recurring.find(r=>r.id===c.recurringId);
-                                      setDialog({dateIso:selectedIso, roomId:room.id, period:p, initial:c, editingRecurringId: rec?.id});
-                                    } else {
-                                      setDialog({dateIso:selectedIso, roomId:room.id, period:p, initial:c});
-                                    }
-                                  } else {
-                                    setDialog({dateIso:selectedIso, roomId:room.id, period:p});
-                                  }
-                                }}>
+                                <div className={`rounded-xl p-2 min-h-16 ${cls}`} onClick={()=>openCell(room,p)}>
                                   {cell?(
                                     <div className="flex flex-col gap-1">
                                       <div className="font-medium flex items-center gap-2">
@@ -639,12 +608,11 @@
               </div>
             </section>
 
-            {/* nastavení */}
             {showSettings && (
               <section className="bg-white/80 rounded-2xl p-4 grid grid-cols-1 lg:grid-cols-3 gap-4">
                 <div>
                   <h2 className="text-lg font-semibold mb-2">Učitelé</h2>
-                  <div className="text-sm text-gray-600">Seznam učitelů je odvozen ze schválených uživatelů (viz „Uživatelé“).</div>
+                  <div className="text-sm text-gray-600">Seznam učitelů vzniká ze schválených uživatelů (viz „Uživatelé“).</div>
                 </div>
 
                 <div>
@@ -657,7 +625,7 @@
                       <div className="flex flex-col gap-2">
                         {rooms.map(r=>(
                           <div key={r.id}
-                            className="flex items-center justify-between rounded-xl border bg-white/70 px-3 py-2 cursor-move select-none"
+                            className="flex items-center justify-between rounded-2xl border bg-white/70 px-3 py-2 cursor-move select-none"
                             draggable
                             onDragStart={()=>{ setDragRoomId(r.id); setIsDraggingRoom(true); }}
                             onDragEnd={()=>{ setIsDraggingRoom(false); setDragRoomId(null); }}
@@ -755,7 +723,14 @@
         );
       }
 
-      ReactDOM.createRoot(document.getElementById('root')).render(<App/>);
+      /****************************************************
+       * Root render – Auth je oddělený, hooky se už nemění
+       ****************************************************/
+      ReactDOM.createRoot(document.getElementById('root')).render(
+        <AuthGate>
+          {({ user, profile, signOut }) => <CalendarApp user={user} profile={profile} signOut={signOut} />}
+        </AuthGate>
+      );
     </script>
   </body>
 </html>
