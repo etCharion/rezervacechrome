@@ -26,7 +26,7 @@
 
     <script type="text/babel">
       /****************************************************
-       * Utilitky + UI drobnosti
+       * Utilitky
        ****************************************************/
       const { useState, useEffect, useMemo } = React;
 
@@ -42,7 +42,7 @@
       const diffDays=(aISO,bISO)=> Math.round((parseISO(aISO) - parseISO(bISO)) / 86400000);
       const schoolYearEndISO=(date)=>{
         const y=date.getFullYear(); const m=date.getMonth();
-        const endYear=(m>=8? y+1:y); // září→červen následující rok
+        const endYear=(m>=8? y+1:y);
         return new Date(endYear,5,30).toISOString().slice(0,10); // 30. 6.
       };
       const PERIODS = ["0","1","2","3","4","5","6","7","8"];
@@ -55,7 +55,7 @@
       };
 
       /****************************************************
-       * Firebase init – VLOŽEN TVŮJ KONFIG
+       * Firebase init (tvůj config)
        ****************************************************/
       const firebaseConfig = {
         apiKey: "AIzaSyCJHjEVG_BCjTnHDSQ07Bym-XGAs1k_fXw",
@@ -70,41 +70,35 @@
       const db   = firebase.firestore();
 
       /****************************************************
-       * Re-usable karty (login/loading/pending)
+       * Re-usable UI (karty)
        ****************************************************/
-      function LoadingCard() {
-        return (
-          <div className="min-h-[60vh] grid place-items-center">
-            <div className="rounded-2xl bg-white/80 p-6 shadow">Načítám…</div>
+      const LoadingCard = () => (
+        <div className="min-h-[60vh] grid place-items-center">
+          <div className="rounded-2xl bg-white/80 p-6 shadow">Načítám…</div>
+        </div>
+      );
+      const LoginCard = ({ onSignIn }) => (
+        <div className="min-h-[60vh] grid place-items-center">
+          <div className="rounded-2xl bg-white/80 p-6 shadow flex flex-col gap-3 items-start">
+            <h2 className="text-xl font-semibold">Přihlášení</h2>
+            <button onClick={onSignIn} className="px-3 py-2 rounded-xl border bg-white">
+              Přihlásit se Googlem
+            </button>
           </div>
-        );
-      }
-      function LoginCard({ onSignIn }) {
-        return (
-          <div className="min-h-[60vh] grid place-items-center">
-            <div className="rounded-2xl bg-white/80 p-6 shadow flex flex-col gap-3 items-start">
-              <h2 className="text-xl font-semibold">Přihlášení</h2>
-              <button onClick={onSignIn} className="px-3 py-2 rounded-xl border bg-white">
-                Přihlásit se Googlem
-              </button>
-            </div>
+        </div>
+      );
+      const PendingCard = ({ email, onSignOut }) => (
+        <div className="min-h-[60vh] grid place-items-center">
+          <div className="rounded-2xl bg-white/80 p-6 shadow flex flex-col gap-3">
+            <h2 className="text-xl font-semibold">Účet čeká na schválení</h2>
+            <p className="text-sm text-gray-600">Přihlášen: {email}</p>
+            <button onClick={onSignOut} className="px-3 py-2 rounded-xl border bg-white">Odhlásit</button>
           </div>
-        );
-      }
-      function PendingCard({ email, onSignOut }) {
-        return (
-          <div className="min-h-[60vh] grid place-items-center">
-            <div className="rounded-2xl bg-white/80 p-6 shadow flex flex-col gap-3">
-              <h2 className="text-xl font-semibold">Účet čeká na schválení</h2>
-              <p className="text-sm text-gray-600">Přihlášen: {email}</p>
-              <button onClick={onSignOut} className="px-3 py-2 rounded-xl border bg-white">Odhlásit</button>
-            </div>
-          </div>
-        );
-      }
+        </div>
+      );
 
       /****************************************************
-       * AuthGate – jediná komponenta, co řeší přihlášení
+       * AuthGate – správa přihlášení + bootstrap/allowlist
        ****************************************************/
       function AuthGate({ children }) {
         const [phase, setPhase] = React.useState('loading'); // 'loading' | 'signed-out' | 'pending' | 'ok'
@@ -113,38 +107,44 @@
 
         React.useEffect(() => {
           return auth.onAuthStateChanged(async (u) => {
-            if (!u) {
-              setUser(null); setProfile(null); setPhase('signed-out'); return;
-            }
-            // /users bootstrap
-            const ref = db.collection('users').doc(u.uid);
-            await ref.set({
-              email: u.email || '',
-              displayName: u.displayName || (u.email? u.email.split('@')[0] : 'Uživatel'),
-              lastLogin: firebase.firestore.FieldValue.serverTimestamp(),
-            }, { merge: true });
+            if (!u) { setUser(null); setProfile(null); setPhase('signed-out'); return; }
 
+            const usersRef = db.collection('users').doc(u.uid);
+            // Allowlist (předschválení): dokument s ID = e-mail
+            const allowSnap = await db.collection('allowlist').doc(u.email || '').get();
+            const inAllow   = allowSnap.exists ? (allowSnap.data() || {}) : null;
+
+            // Vytvoř/aktualizuj profil
+            const base = {
+              email: u.email || '',
+              displayName: u.displayName || (u.email ? u.email.split('@')[0] : 'Uživatel'),
+              lastLogin: firebase.firestore.FieldValue.serverTimestamp(),
+            };
             // První admin
             if (u.email === 'dgunka@gymnaziumbma.cz') {
-              await ref.set({ isAdmin: true, approved: true, bootstrapped: true }, { merge: true });
+              base.isAdmin = true;
+              base.approved = true;
             }
+            // Předschválený allowlist
+            if (inAllow) {
+              base.approved = true;
+              if (inAllow.isAdmin) base.isAdmin = true;
+            }
+            await usersRef.set(base, { merge: true });
 
-            const snap = await ref.get();
+            const snap = await usersRef.get();
             const data = snap.data() || {};
             setUser(u); setProfile(data);
             setPhase(data.approved ? 'ok' : 'pending');
           });
         }, []);
 
-        const signIn = React.useCallback(() => {
-          const provider = new firebase.auth.GoogleAuthProvider();
-          auth.signInWithPopup(provider);
-        }, []);
-        const signOut = React.useCallback(() => auth.signOut(), []);
+        const signIn  = () => auth.signInWithPopup(new firebase.auth.GoogleAuthProvider());
+        const signOut = () => auth.signOut();
 
-        if (phase === 'loading') return <LoadingCard />;
-        if (phase === 'signed-out') return <LoginCard onSignIn={signIn} />;
-        if (phase === 'pending') return <PendingCard email={auth.currentUser?.email} onSignOut={signOut} />;
+        if (phase === 'loading')   return <LoadingCard />;
+        if (phase === 'signed-out')return <LoginCard onSignIn={signIn} />;
+        if (phase === 'pending')   return <PendingCard email={auth.currentUser?.email} onSignOut={signOut} />;
 
         return children({ user, profile, signOut });
       }
@@ -209,7 +209,7 @@
 
         const isRoom = room?.type === "room";
         const [repeatOn, setRepeatOn] = useState(!!editingRecurring);
-        const [repeatMode, setRepeatMode] = useState(editingRecurring?.mode || 'until'); // 'until' | 'weeks'
+        const [repeatMode, setRepeatMode] = useState(editingRecurring?.mode || 'until');
         const [repeatWeeks, setRepeatWeeks] = useState(editingRecurring?.weeks || 4);
         const [allowElsewhere, setAllowElsewhere] = useState(!!editingRecurring?.allowElsewhere && isRoom);
 
@@ -246,7 +246,6 @@
                 <input className="w-full border rounded-xl px-3 py-2 mt-1" value={note} onChange={e=>setNote(e.target.value)}/>
               </label>
 
-              {/* Opakování */}
               <div className="mt-4 border-t pt-3">
                 <div className="text-sm font-medium mb-2">Opakovat každý týden</div>
                 <div className="inline-flex rounded-xl border overflow-hidden mb-3">
@@ -294,12 +293,12 @@
                   onClick={()=>{
                     onSave({
                       teacherId,
-                      pieces: isEquip ? Number(pieces) : undefined,
+                      pieces: room?.type==='equipment' ? Number(pieces) : undefined,
                       note,
                       repeat: repeatOn ? {
                         mode: repeatMode,
                         weeks: repeatMode==='weeks' ? repeatWeeks : undefined,
-                        allowElsewhere: isRoom ? allowElsewhere : undefined,
+                        allowElsewhere: room?.type==='room' ? allowElsewhere : undefined,
                       } : null,
                     });
                     onClose();
@@ -313,7 +312,7 @@
       }
 
       /****************************************************
-       * CalendarApp – tvoje appka bez auth hooků
+       * CalendarApp – aplikace (bez auth logiky)
        ****************************************************/
       function CalendarApp({ user, profile, signOut }) {
         const [selectedDate,setSelectedDate]=useState(new Date());
@@ -321,22 +320,25 @@
 
         // Data
         const [rooms,setRooms]=useState([]);
-        const [teachers,setTeachers]=useState([]); // schválení uživatelé -> jména
-        const [reservations,setReservations]=useState({}); // map roomId -> { period -> cell }
+        const [teachers,setTeachers]=useState([]);
+        const [reservations,setReservations]=useState({});
         const [recurring,setRecurring]=useState([]);
-        const [allUsers,setAllUsers]=useState([]); // pro admin UI
+        const [allUsers,setAllUsers]=useState([]);
+        const [allowlist,setAllowlist]=useState([]);
+
         const [showSettings,setShowSettings]=useState(false);
         const [dateModal,setDateModal]=useState(false);
         const [editingRoom,setEditingRoom]=useState(null);
         const [creatingRoom,setCreatingRoom]=useState(false);
-        const [dialog,setDialog]=useState(null); // {dateIso,roomId,period,initial?, editingRecurringId?}
-        // DnD pořadí (lokálně)
+        const [dialog,setDialog]=useState(null);
+
+        // DnD pořadí (lokální UI)
         const [dragRoomId, setDragRoomId] = useState(null);
         const [isDraggingRoom, setIsDraggingRoom] = useState(false);
 
         const isAdmin = !!profile?.isAdmin;
 
-        // Uživatelé
+        // ===== Načítání kolekcí =====
         useEffect(()=>{
           const unsubUsers = db.collection('users').onSnapshot((q)=>{
             const list = q.docs.map(d=>({id:d.id, ...d.data()}));
@@ -344,10 +346,12 @@
             const allowed = list.filter(u=>u.approved);
             setTeachers(allowed.map(u=>({id:u.id, name: u.displayName || u.email})));
           });
-          return () => unsubUsers && unsubUsers();
+          const unsubAllow = db.collection('allowlist').onSnapshot((q)=>{
+            setAllowlist(q.docs.map(d=>({id:d.id, ...d.data()})));
+          });
+          return ()=>{ unsubUsers&&unsubUsers(); unsubAllow&&unsubAllow(); };
         },[]);
 
-        // Rooms
         useEffect(()=>{
           const unsub = db.collection('rooms').orderBy('name','asc').onSnapshot(q=>{
             setRooms(q.docs.map(d=>({id:d.id,...d.data()})));
@@ -355,7 +359,6 @@
           return () => unsub && unsub();
         },[]);
 
-        // Reservations pro vybraný den
         useEffect(()=>{
           const unsub = db.collection('reservations').where('dateISO','==',selectedIso).onSnapshot(q=>{
             const dayMap = {};
@@ -369,7 +372,6 @@
           return () => unsub && unsub();
         },[selectedIso]);
 
-        // Recurring (celé; filtrujeme na klientu)
         useEffect(()=>{
           const unsub = db.collection('recurring').onSnapshot(q=>{
             setRecurring(q.docs.map(d=>({id:d.id, ...d.data()})));
@@ -377,20 +379,19 @@
           return () => unsub && unsub();
         },[]);
 
-        // occursOn
-        function occursOn(dateISO, rec){
+        // ===== Pomocné funkce =====
+        const occursOn = (dateISO, rec)=>{
           if (cmpISO(dateISO, rec.startISO) < 0) return false;
           const days = diffDays(dateISO, rec.startISO);
           if (days % 7 !== 0) return false;
           if (rec.mode === 'weeks' && typeof rec.weeks === 'number'){
             const weekIndex = Math.floor(days / 7);
-            return weekIndex >= 0 && weekIndex < rec.weeks; // včetně prvního týdne
+            return weekIndex >= 0 && weekIndex < rec.weeks;
           }
           if (rec.endISO && cmpISO(dateISO, rec.endISO) > 0) return false;
           return true;
-        }
+        };
 
-        // Effective plan
         const effectivePlan = useMemo(()=>{
           const plan = JSON.parse(JSON.stringify(reservations || {}));
           (recurring || []).forEach(r=>{
@@ -410,8 +411,7 @@
           return plan;
         }, [reservations, recurring, selectedIso]);
 
-        // Týdenní panel – přehled dne (jen opakování)
-        function daySummary(date){
+        const daySummary = (date)=>{
           const iso = toISO(date), items=[];
           (recurring||[]).forEach(r=>{
             if(!occursOn(iso, r)) return;
@@ -419,11 +419,24 @@
           });
           items.sort((a,b)=> Number(a.period)-Number(b.period) || a.code.localeCompare(b.code));
           return items;
+        };
+
+        // === Sanitizace payloadu pro Firestore (bez undefined) ===
+        function normalizeRoomPayload(p){
+          const out = {...p};
+          if (!out.code && out.name) out.code = out.name.slice(0,2).toUpperCase();
+          if (out.type !== 'equipment') delete out.max;
+          Object.keys(out).forEach(k => (out[k]===undefined) && delete out[k]);
+          return out;
         }
 
-        // CRUD – rooms (admin)
-        const addRoom = async (payload)=> await db.collection('rooms').add(payload);
-        const updateRoom = async (id, patch)=> await db.collection('rooms').doc(id).set(patch, {merge:true});
+        // CRUD – rooms
+        const addRoom = async (payload)=> {
+          await db.collection('rooms').add(normalizeRoomPayload(payload));
+        };
+        const updateRoom = async (id, patch)=> {
+          await db.collection('rooms').doc(id).set(normalizeRoomPayload(patch), {merge:true});
+        };
         const removeRoom = async (id)=> await db.collection('rooms').doc(id).delete();
 
         // CRUD – reservations/recurring
@@ -435,7 +448,6 @@
             const seriesStartISO = (origSnap && origSnap.exists) ? origSnap.data().startISO : dateIso;
 
             if(payload.repeat){
-              // smazat single na startu (ať se nedubluje)
               const daySnap = await db.collection('reservations')
                 .where('dateISO','==', dateIso)
                 .where('roomId','==', roomId)
@@ -462,7 +474,6 @@
                 await db.collection('recurring').add(rec);
               }
             } else {
-              // vypnuto opakování → smazat sérii, uložit single
               if(editingRecurringId){
                 await db.collection('recurring').doc(editingRecurringId).delete();
               }
@@ -473,7 +484,6 @@
               });
             }
           } else {
-            // jednorázová
             await db.collection('reservations').add({
               dateISO: dateIso, roomId, period,
               teacherId: payload.teacherId, pieces: payload.pieces, note: payload.note,
@@ -509,15 +519,18 @@
           }
         };
 
-        // WORKWEEK
+        // UI – pracovní týden
         const workweek = useMemo(()=>{
           const start = startOfWeek(selectedDate);
           return [0,1,2,3,4].map(off=>addDays(start,off));
         }, [selectedDate]);
 
-        // Render
+        /*********************
+         * Render
+         *********************/
         return (
           <div className="p-4 max-w-7xl mx-auto grid gap-4">
+            {/* horní lišta */}
             <header className="flex items-center justify-between">
               <h1 className="text-2xl font-bold">Rezervace Chromebooků a učeben</h1>
               <div className="flex items-center gap-2">
@@ -529,8 +542,10 @@
               </div>
             </header>
 
+            {/* datum */}
             <DateModal open={dateModal} valueISO={toISO(selectedDate)} onClose={()=>setDateModal(false)} onChange={(v)=>v&&setSelectedDate(parseISO(v))}/>
 
+            {/* přehled týdne */}
             <section className="bg-white/80 rounded-2xl p-4">
               <div className="hidden sm:grid grid-cols-5 text-center text-xs font-medium text-gray-600 mb-2">{["Po","Út","St","Čt","Pá"].map((n,i)=><div key={i} className="py-1">{n}</div>)}</div>
               <div className="sm:grid sm:grid-cols-5 gap-2 flex overflow-x-auto -mx-2 px-2">
@@ -554,6 +569,7 @@
               </div>
             </section>
 
+            {/* denní plán */}
             <section className="bg-white/80 rounded-2xl p-4">
               <h2 className="text-lg font-semibold mb-2">{fullDateCz(selectedDate)}</h2>
               <div className="-mx-2 sm:mx-0 overflow-x-auto">
@@ -608,6 +624,7 @@
               </div>
             </section>
 
+            {/* nastavení */}
             {showSettings && (
               <section className="bg-white/80 rounded-2xl p-4 grid grid-cols-1 lg:grid-cols-3 gap-4">
                 <div>
@@ -669,7 +686,7 @@
                   {isAdmin ? (
                     <>
                       <div className="text-xs text-gray-600 mb-2">Schvalování a role. Uživatele přidá app při prvním přihlášení.</div>
-                      <div className="space-y-2">
+                      <div className="space-y-2 mb-6">
                         {allUsers.map(u=>(
                           <div key={u.id} className="flex items-center justify-between rounded-xl border bg-white px-3 py-2">
                             <div className="text-sm">
@@ -688,6 +705,12 @@
                             </div>
                           </div>
                         ))}
+                      </div>
+
+                      {/* Předschválené účty (allowlist) */}
+                      <div>
+                        <h3 className="font-semibold mb-2">Předschválené účty</h3>
+                        <AllowlistManager list={allowlist} />
                       </div>
                     </>
                   ) : (
@@ -724,7 +747,54 @@
       }
 
       /****************************************************
-       * Root render – Auth je oddělený, hooky se už nemění
+       * AllowlistManager – admin správa předschválených účtů
+       ****************************************************/
+      function AllowlistManager({ list }) {
+        const [email, setEmail] = React.useState('');
+        const [isAdmin, setIsAdmin] = React.useState(false);
+
+        const add = async () => {
+          const e = email.trim().toLowerCase();
+          if(!e) return;
+          await db.collection('allowlist').doc(e).set({ email:e, isAdmin: !!isAdmin, createdAt: firebase.firestore.FieldValue.serverTimestamp() });
+          setEmail(''); setIsAdmin(false);
+        };
+        const toggleAdmin = async (item, val) => {
+          await db.collection('allowlist').doc(item.id).set({ isAdmin: !!val }, { merge:true });
+        };
+        const remove = async (item) => {
+          await db.collection('allowlist').doc(item.id).delete();
+        };
+
+        return (
+          <div className="space-y-3">
+            <div className="flex gap-2">
+              <input className="flex-1 border rounded-xl px-3 py-2" placeholder="email@skola.cz" value={email} onChange={(e)=>setEmail(e.target.value)} />
+              <label className="inline-flex items-center gap-2 text-sm px-2">
+                <input type="checkbox" checked={isAdmin} onChange={(e)=>setIsAdmin(e.target.checked)} /> admin
+              </label>
+              <button className="px-3 py-2 rounded-xl bg-black text-white" onClick={add}>Přidat</button>
+            </div>
+            <div className="flex flex-col gap-2">
+              {list.map(item=>(
+                <div key={item.id} className="flex items-center justify-between rounded-xl border bg-white px-3 py-2">
+                  <div className="text-sm">{item.email}</div>
+                  <div className="flex items-center gap-3">
+                    <label className="inline-flex items-center gap-1 text-sm">
+                      <input type="checkbox" checked={!!item.isAdmin} onChange={(e)=>toggleAdmin(item, e.target.checked)} /> admin
+                    </label>
+                    <button className="text-red-600 px-2 py-1 rounded-full hover:bg-red-50" onClick={()=>remove(item)}>✕</button>
+                  </div>
+                </div>
+              ))}
+              {list.length===0 && <div className="text-sm text-gray-600">Zatím žádné předschválené účty.</div>}
+            </div>
+          </div>
+        );
+      }
+
+      /****************************************************
+       * Root render
        ****************************************************/
       ReactDOM.createRoot(document.getElementById('root')).render(
         <AuthGate>
