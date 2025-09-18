@@ -31,6 +31,8 @@
       const PERIODS=["0","1","2","3","4","5","6","7","8"];
       const STORAGE_KEY="rezervace-chromebooku-state-v4";
       const uid=(p="id")=>`${p}_${Math.random().toString(36).slice(2,10)}`;
+      const [dragRoomId, setDragRoomId] = useState(null);
+      const [isDraggingRoom, setIsDraggingRoom] = useState(false);
 
       const defaultState={
         teachers:[{id:uid("t"),name:"Nováková"},{id:uid("t"),name:"Dvořák"}],
@@ -55,6 +57,28 @@
             <div className="flex justify-end mt-3"><button onClick={onClose} className="px-3 py-2 rounded-xl border">Hotovo</button></div>
           </div>
         </div>);
+      }
+      function onRoomDragStart(id) {
+        setDragRoomId(id);
+        setIsDraggingRoom(true);
+      }
+      function onRoomDragEnd() {
+        setIsDraggingRoom(false);
+        setDragRoomId(null);
+      }
+      function onRoomDrop(targetId) {
+        setState((s) => {
+          if (!dragRoomId || dragRoomId === targetId) return s;
+          const newRooms = [...s.rooms];
+          const from = newRooms.findIndex(r => r.id === dragRoomId);
+          const to = newRooms.findIndex(r => r.id === targetId);
+          if (from < 0 || to < 0) return s;
+          const [moved] = newRooms.splice(from, 1);
+          newRooms.splice(to, 0, moved);
+          return { ...s, rooms: newRooms };
+        });
+        setIsDraggingRoom(false);
+        setDragRoomId(null);
       }
 
       function RoomDialog({open,initial,onClose,onSave}){ 
