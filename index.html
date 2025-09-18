@@ -317,34 +317,41 @@
 
             // CREATE / UPDATE recurring
             if (payload.repeat || editingRecurringId){
+              // při editaci bereme start celé série z původní položky
+              const orig = editingRecurringId ? s.recurring.find(r=>r.id===editingRecurringId) : null;
+              const seriesStartISO = orig ? orig.startISO : dateIso;
+
               let newRecurring={
                 roomId, period,
                 teacherId:payload.teacherId,
                 pieces:payload.pieces,
                 note:payload.note,
-                startISO:dateIso,
+                startISO:seriesStartISO,
                 allowElsewhere: (payload.repeat?.allowElsewhere===true) ? true : undefined,
               };
-              // vypočítej endISO dle módu
+
+              // vypočítej endISO dle módu — VŽDY od seriesStartISO
               if (payload.repeat){
                 if (payload.repeat.mode==='until'){
                   newRecurring.mode='until';
-                  newRecurring.endISO=schoolYearEndISO(parseISO(dateIso));
+                  newRecurring.endISO=schoolYearEndISO(parseISO(seriesStartISO));
                 } else {
                   const weeks=Math.max(1, Number(payload.repeat.weeks)||1);
                   newRecurring.mode='weeks';
                   newRecurring.weeks=weeks;
-                  const endDate = addWeeks(parseISO(dateIso), weeks-1); // poslední výskyt
+                  const endDate = addWeeks(parseISO(seriesStartISO), weeks-1); // poslední výskyt
                   newRecurring.endISO = toISO(endDate);
                 }
               }
 
               if (editingRecurringId){
-                newRecurring.id = editingRecurringId;
-                // zachovej původní startISO při editaci
-                const orig = s.recurring.find(r=>r.id===editingRecurringId);
-                if (orig){ newRecurring.startISO = orig.startISO; }
-                next.recurring = s.recurring.map(r=> r.id===editingRecurringId ? {...r, ...newRecurring} : r);
+                // pokud je při editaci opakování vypnuté, sérii smažeme a hotovo
+                if (!payload.repeat){
+                  next.recurring = s.recurring.filter(r=> r.id!==editingRecurringId);
+                } else {
+                  newRecurring.id = editingRecurringId;
+                  next.recurring = s.recurring.map(r=> r.id===editingRecurringId ? {...r, ...newRecurring} : r);
+                }
               } else {
                 newRecurring.id = uid('rec');
                 next.recurring=[...s.recurring,newRecurring];
@@ -450,7 +457,6 @@
                                   <div className="font-medium flex items-center gap-2">
                                     {state.teachers.find(t=>t.id===cell.teacherId)?.name||'?'}
                                     {cell.pieces?<Badge className="bg-white/70 border text-xs">{cell.pieces} ks</Badge>:null}
-                                    {/* štítek „opak.“ odstraněn */}
                                   </div>
                                   {cell.note&&<div className="text-xs">{cell.note}</div>}
                                   <div className="flex gap-2 mt-1">
