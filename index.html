@@ -4,19 +4,19 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Rezervace Chromebooků a učeben</title>
-    <!-- React + ReactDOM z CDN (bez bundleru) -->
+    <!-- React + ReactDOM z CDN -->
     <script crossorigin src="https://unpkg.com/react@18/umd/react.development.js"></script>
     <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
-    <!-- Babel kvůli JSX -->
+    <!-- Babel pro JSX -->
     <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
-    <!-- Tailwind CSS (CDN) -->
+    <!-- Tailwind -->
     <script src="https://cdn.tailwindcss.com"></script>
   </head>
   <body class="bg-gradient-to-br from-indigo-100 via-fuchsia-100 to-sky-100">
     <div id="root"></div>
 
     <script type="text/babel">
-      // ====== Malé utilitky (čistý JS místo date-fns) ======
+      // ====== utilitky (bez date-fns) ======
       const toISO = (d) =>
         new Date(d.getFullYear(), d.getMonth(), d.getDate())
           .toISOString()
@@ -48,8 +48,7 @@
         });
       const shortDateCz = (d) =>
         d.toLocaleDateString("cs-CZ", { day: "numeric", month: "numeric" });
-
-      // Bezpečný rozdíl dnů (na půlnoci v UTC), pro % 7
+      // rozdíl dnů (na půlnoci UTC) – pro opakování po 7 dnech
       const dayDiff = (aISO, bISO) => {
         const A = parseISO(aISO);
         const B = parseISO(bISO);
@@ -58,10 +57,10 @@
         return Math.floor((AM - BM) / 86400000);
       };
 
-      // ====== Aplikace ======
+      // ====== aplikace ======
       const { useState, useEffect, useMemo } = React;
       const PERIODS = ["0","1","2","3","4","5","6","7","8"];
-      const STORAGE_KEY = "rezervace-chromebooku-state-v1";
+      const STORAGE_KEY = "rezervace-chromebooku-state-v3";
       const uid = (p="id") => `${p}_${Math.random().toString(36).slice(2,10)}`;
 
       const defaultState = {
@@ -70,32 +69,25 @@
           { id: uid("t"), name: "Dvořák" },
         ],
         rooms: [
-          { id: uid("r"), name: "IT učebna", floor: "přízemí", code: "IT" },
-          { id: uid("r"), name: "Vozík 1", floor: "1. patro", code: "V1" },
-          { id: uid("r"), name: "Druhé patro", floor: "2. patro", code: "2P" },
+          { id: uid("r"), name: "IT učebna",  floor: "přízemí",  code: "IT", type: "room" },
+          { id: uid("r"), name: "Vozík 1",    floor: "1. patro", code: "V1", type: "equipment", max: 20 },
+          { id: uid("r"), name: "Druhé patro",floor: "2. patro", code: "2P", type: "room" },
         ],
         // 'YYYY-MM-DD': { [roomId]: { [period]: { teacherId, pieces?, note? } } }
         reservations: {},
         // opakované: { id, roomId, period, teacherId, pieces?, note?, startISO, endISO? }
-        // (den v týdnu už neukládám; počítám přes rozdíl dnů % 7)
         recurring: [],
       };
       const loadState = () => {
-        try {
-          return JSON.parse(localStorage.getItem(STORAGE_KEY)) || defaultState;
-        } catch {
-          return defaultState;
-        }
+        try { return JSON.parse(localStorage.getItem(STORAGE_KEY)) || defaultState; }
+        catch { return defaultState; }
       };
       const saveState = (s) => localStorage.setItem(STORAGE_KEY, JSON.stringify(s));
 
-      const Badge = ({ children, className = "" }) => (
-        <span className={`inline-block text-[10px] px-1.5 py-0.5 rounded ${className}`}>
-          {children}
-        </span>
-      );
+      const Badge = ({children, className=''}) =>
+        <span className={`inline-block text-[10px] px-1.5 py-0.5 rounded ${className}`}>{children}</span>;
 
-      // ---- Modální dialog – výběr data ----
+      // ---- Modal – výběr data ----
       function DateModal({ open, valueISO, onClose, onChange }) {
         if (!open) return null;
         return (
@@ -103,37 +95,33 @@
             <div className="bg-white rounded-2xl shadow-xl w-full max-w-sm p-4">
               <div className="flex items-center justify-between mb-3">
                 <h3 className="text-lg font-semibold">Vyber datum</h3>
-                <button onClick={onClose} className="p-2 rounded-full hover:bg-gray-100">
-                  ✕
-                </button>
+                <button onClick={onClose} className="p-2 rounded-full hover:bg-gray-100">✕</button>
               </div>
-              <input
-                type="date"
-                className="w-full border rounded-xl px-3 py-2"
-                value={valueISO}
-                onChange={(e) => onChange(e.target.value)}
-              />
+              <input type="date" className="w-full border rounded-xl px-3 py-2"
+                     value={valueISO} onChange={(e)=>onChange(e.target.value)} />
               <div className="flex justify-end mt-3">
-                <button onClick={onClose} className="px-3 py-2 rounded-xl border">
-                  Hotovo
-                </button>
+                <button onClick={onClose} className="px-3 py-2 rounded-xl border">Hotovo</button>
               </div>
             </div>
           </div>
         );
       }
 
-      // ---- Modální dialog – úprava učebny ----
+      // ---- Modal – úprava místnosti ----
       function RoomDialog({ open, initial, onClose, onSave }) {
-        const [name, setName] = useState("");
+        const [name, setName]   = useState("");
         const [floor, setFloor] = useState("");
-        const [code, setCode] = useState("");
+        const [code, setCode]   = useState("");
+        const [type, setType]   = useState("room");
+        const [max, setMax]     = useState(1);
 
         useEffect(() => {
           if (open && initial) {
             setName(initial.name || "");
             setFloor(initial.floor || "");
             setCode(initial.code || "");
+            setType(initial.type || "room");
+            setMax(initial.max || 1);
           }
         }, [open, initial]);
 
@@ -142,135 +130,100 @@
           <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
             <div className="bg-white rounded-2xl shadow-xl w-full max-w-md p-4">
               <div className="flex items-center justify-between mb-3">
-                <h3 className="text-lg font-semibold">Upravit učebnu</h3>
-                <button onClick={onClose} className="p-2 rounded-full hover:bg-gray-100">
-                  ✕
-                </button>
+                <h3 className="text-lg font-semibold">Upravit</h3>
+                <button onClick={onClose} className="p-2 rounded-full hover:bg-gray-100">✕</button>
               </div>
 
               <div className="grid grid-cols-6 gap-2">
-                <input
-                  className="col-span-3 border rounded-xl px-3 py-2"
-                  placeholder="Název"
-                  value={name}
-                  onChange={(e) => setName(e.target.value)}
-                />
-                <input
-                  className="col-span-2 border rounded-xl px-3 py-2"
-                  placeholder="Patro"
-                  value={floor}
-                  onChange={(e) => setFloor(e.target.value)}
-                />
-                <input
-                  className="col-span-1 border rounded-xl px-3 py-2"
-                  placeholder="Zkratka"
-                  value={code}
-                  onChange={(e) => setCode(e.target.value)}
-                />
+                <input className="col-span-3 border rounded-xl px-3 py-2" placeholder="Název"
+                       value={name} onChange={(e)=>setName(e.target.value)} />
+                <input className="col-span-2 border rounded-xl px-3 py-2" placeholder="Patro"
+                       value={floor} onChange={(e)=>setFloor(e.target.value)} />
+                <input className="col-span-1 border rounded-xl px-3 py-2" placeholder="Zkratka"
+                       value={code} onChange={(e)=>setCode(e.target.value)} />
+                <select className="col-span-3 border rounded-xl px-3 py-2" value={type}
+                        onChange={(e)=>setType(e.target.value)}>
+                  <option value="room">Učebna</option>
+                  <option value="equipment">Pomůcka</option>
+                </select>
+                <input className="col-span-3 border rounded-xl px-3 py-2"
+                       type="number" min="1" placeholder="Max. kusů"
+                       value={max} onChange={(e)=>setMax(Number(e.target.value))}
+                       disabled={type!=="equipment"} />
               </div>
 
               <div className="flex justify-end gap-2 mt-4">
-                <button onClick={onClose} className="px-3 py-2 rounded-xl border">
-                  Zrušit
-                </button>
-                <button
-                  onClick={() => onSave({ name, floor, code })}
-                  className="px-3 py-2 rounded-xl bg-black text-white"
-                >
-                  Uložit
-                </button>
+                <button onClick={onClose} className="px-3 py-2 rounded-xl border">Zrušit</button>
+                <button onClick={()=>onSave({name, floor, code, type, max: type==="equipment"?max:undefined})}
+                        className="px-3 py-2 rounded-xl bg-black text-white">Uložit</button>
               </div>
             </div>
           </div>
         );
       }
 
-      // ---- Dialog pro rezervaci (beze změn, jen kosmetika) ----
-      function ReservationDialog({ open, onClose, onSave, teachers, initial }) {
-        const [teacherId, setTeacherId] = useState(
-          initial?.teacherId || teachers[0]?.id || ""
-        );
-        const [pieces, setPieces] = useState(initial?.pieces || "");
+      // ---- Modal – rezervace ----
+      function ReservationDialog({ open, onClose, onSave, teachers, initial, room }) {
+        const [teacherId, setTeacherId] = useState(initial?.teacherId || teachers[0]?.id || "");
+        const [pieces, setPieces] = useState(initial?.pieces ?? 1);
         const [note, setNote] = useState(initial?.note || "");
         const [repeat, setRepeat] = useState(false);
+
+        useEffect(()=>{ if(open){ setPieces(initial?.pieces ?? 1); } }, [open, initial]);
         if (!open) return null;
+
+        const isEquip = room?.type === "equipment";
+        const maxPieces = Math.max(1, room?.max || 1);
 
         return (
           <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30">
             <div className="bg-white rounded-2xl shadow-xl w-full max-w-md p-4">
               <div className="flex items-center justify-between mb-3">
-                <h3 className="text-lg font-semibold">
-                  {initial ? "Upravit rezervaci" : "Nová rezervace"}
-                </h3>
-                <button onClick={onClose} className="p-2 rounded-full hover:bg-gray-100">
-                  ✕
-                </button>
+                <h3 className="text-lg font-semibold">{initial ? "Upravit rezervaci" : "Nová rezervace"}</h3>
+                <button onClick={onClose} className="p-2 rounded-full hover:bg-gray-100">✕</button>
               </div>
 
-              <label className="block text-sm mb-2">
-                Učitel/ka
-                <select
-                  className="w-full border rounded-xl px-3 py-2 mt-1"
-                  value={teacherId}
-                  onChange={(e) => setTeacherId(e.target.value)}
-                >
-                  {teachers.map((t) => (
-                    <option key={t.id} value={t.id}>
-                      {t.name}
-                    </option>
-                  ))}
+              <label className="block text-sm mb-2">Učitel/ka
+                <select className="w-full border rounded-xl px-3 py-2 mt-1"
+                        value={teacherId} onChange={(e)=>setTeacherId(e.target.value)}>
+                  {teachers.map(t=> <option key={t.id} value={t.id}>{t.name}</option>)}
                 </select>
               </label>
 
-              <div className="grid grid-cols-2 gap-2">
-                <label className="block text-sm">
-                  Kusů (volit.)
-                  <input
-                    className="w-full border rounded-xl px-3 py-2 mt-1"
-                    type="number"
-                    min="1"
-                    value={pieces}
-                    onChange={(e) => setPieces(e.target.value)}
-                  />
-                </label>
-                <label className="block text-sm">
-                  Poznámka (volit.)
-                  <input
-                    className="w-full border rounded-xl px-3 py-2 mt-1"
-                    value={note}
-                    onChange={(e) => setNote(e.target.value)}
-                  />
-                </label>
-              </div>
+              {isEquip && (
+                <div className="mb-2">
+                  <div className="flex justify-between text-xs text-gray-600">
+                    <span>Počet kusů</span><span>{pieces} / {maxPieces}</span>
+                  </div>
+                  <input type="range" min="1" max={maxPieces} value={pieces}
+                         onChange={(e)=>setPieces(Number(e.target.value))}
+                         className="w-full" />
+                </div>
+              )}
+
+              <label className="block text-sm">Poznámka (volit.)
+                <input className="w-full border rounded-xl px-3 py-2 mt-1"
+                       value={note} onChange={(e)=>setNote(e.target.value)} />
+              </label>
 
               <label className="inline-flex items-center gap-2 text-sm mt-3">
-                <input
-                  type="checkbox"
-                  className="scale-110"
-                  checked={repeat}
-                  onChange={(e) => setRepeat(e.target.checked)}
-                />
+                <input type="checkbox" className="scale-110"
+                       checked={repeat} onChange={(e)=>setRepeat(e.target.checked)} />
                 Opakovat každý týden
               </label>
 
               <div className="flex justify-end gap-2 mt-4">
-                <button onClick={onClose} className="px-3 py-2 rounded-xl border">
-                  Zrušit
-                </button>
-                <button
-                  onClick={() => {
-                    onSave({
-                      teacherId,
-                      pieces: pieces ? Number(pieces) : undefined,
-                      note,
-                      repeat,
-                    });
-                    onClose();
-                  }}
-                  className="px-3 py-2 rounded-xl bg-black text-white"
-                >
-                  Uložit
-                </button>
+                <button onClick={onClose} className="px-3 py-2 rounded-xl border">Zrušit</button>
+                <button onClick={()=>{
+                          onSave({
+                            teacherId,
+                            pieces: isEquip ? Number(pieces) : undefined,
+                            note,
+                            repeat
+                          });
+                          onClose();
+                        }}
+                        className="px-3 py-2 rounded-xl bg-black text-white">Uložit</button>
               </div>
             </div>
           </div>
@@ -285,139 +238,115 @@
         const [dateModal, setDateModal] = useState(false);
         const [editingRoom, setEditingRoom] = useState(null);
 
-        useEffect(() => saveState(state), [state]);
+        useEffect(()=>saveState(state), [state]);
 
         const selectedIso = toISO(selectedDate);
 
-        // Aplikovat opakované rezervace pro daný den
-        const effectivePlan = useMemo(() => {
+        // aplikovat opakované rezervace pro vybraný den
+        const effectivePlan = useMemo(()=>{
           const plan = JSON.parse(JSON.stringify(state.reservations[selectedIso] || {}));
-          state.recurring.forEach((r) => {
+          state.recurring.forEach(r=>{
             const diff = dayDiff(selectedIso, r.startISO);
-            const inRange =
-              diff >= 0 &&
-              diff % 7 === 0 &&
-              (!r.endISO || dayDiff(r.endISO, selectedIso) >= 0);
-            if (!inRange) return;
+            const inRange = diff>=0 && diff%7===0 && (!r.endISO || dayDiff(r.endISO, selectedIso)>=0);
+            if(!inRange) return;
             plan[r.roomId] ||= {};
-            if (!plan[r.roomId][r.period]) {
+            if(!plan[r.roomId][r.period]){
               plan[r.roomId][r.period] = {
                 teacherId: r.teacherId,
                 pieces: r.pieces,
                 note: r.note,
-                recurringId: r.id,
+                recurringId: r.id
               };
             }
           });
           return plan;
         }, [state, selectedIso]);
 
-        // pracovní týden (Po–Pá)
-        const workweek = useMemo(() => {
+        // pracovní týden
+        const workweek = useMemo(()=>{
           const start = startOfWeek(selectedDate);
-          return [0, 1, 2, 3, 4].map((off) => addDays(start, off));
+          return [0,1,2,3,4].map(off => addDays(start, off));
         }, [selectedDate]);
 
-        // náhledy pro den: [{period, code, recurring}]
-        function daySummaryDetailed(date) {
+        // náhled dne – „hodina+zkratka“ pro každou rezervaci (bez duplicit v den zadání)
+        function daySummary(date){
           const iso = toISO(date);
           const items = [];
+          const seen = new Set(); // roomId|period
           const direct = state.reservations[iso] || {};
-          Object.entries(direct).forEach(([roomId, slots]) => {
-            Object.keys(slots).forEach((period) => {
-              items.push({
-                period,
-                code: state.rooms.find((r) => r.id === roomId)?.code || "?",
-                recurring: false,
-              });
+          Object.entries(direct).forEach(([roomId, slots])=>{
+            Object.keys(slots).forEach(period=>{
+              seen.add(`${roomId}|${period}`);
+              items.push({period, code: (state.rooms.find(r=>r.id===roomId)?.code||"?"), recurring:false});
             });
           });
-          state.recurring.forEach((r) => {
+          state.recurring.forEach(r=>{
             const diff = dayDiff(iso, r.startISO);
-            const inRange =
-              diff >= 0 &&
-              diff % 7 === 0 &&
-              (!r.endISO || dayDiff(r.endISO, iso) >= 0);
-            if (!inRange) return;
-            items.push({
-              period: r.period,
-              code: state.rooms.find((x) => x.id === r.roomId)?.code || "?",
-              recurring: true,
-            });
+            const inRange = diff>=0 && diff%7===0 && (!r.endISO || dayDiff(r.endISO, iso)>=0);
+            if(!inRange) return;
+            const key = `${r.roomId}|${r.period}`;
+            if(seen.has(key)) return; // nezdvojovat v den zadání
+            items.push({period:r.period, code:(state.rooms.find(x=>x.id===r.roomId)?.code||"?"), recurring:true});
           });
-          items.sort(
-            (a, b) => Number(a.period) - Number(b.period) || a.code.localeCompare(b.code)
-          );
+          items.sort((a,b)=> Number(a.period)-Number(b.period) || a.code.localeCompare(b.code));
           return items;
         }
 
-        // CRUD: učitelé + učebny
-        const addTeacher = (name) =>
-          setState((s) => ({ ...s, teachers: [...s.teachers, { id: uid("t"), name }] }));
-        const removeTeacher = (id) =>
-          setState((s) => ({ ...s, teachers: s.teachers.filter((t) => t.id !== id) }));
+        // CRUD: učitelé
+        const addTeacher = (name)=> setState(s=>({...s, teachers:[...s.teachers, {id:uid("t"), name}]}));
+        const removeTeacher = (id)=> setState(s=>({...s, teachers:s.teachers.filter(t=>t.id!==id)}));
 
-        const addRoom = (name, floor, code) =>
-          setState((s) => ({
-            ...s,
-            rooms: [
-              ...s.rooms,
-              { id: uid("r"), name, floor, code: code || name.slice(0, 2).toUpperCase() },
-            ],
+        // CRUD: místnosti
+        const addRoom = (name, floor, code, type, max) =>
+          setState(s=>({...s,
+            rooms:[...s.rooms, {id:uid("r"), name, floor, code:(code||name.slice(0,2).toUpperCase()), type:(type||"room"), max: (type==="equipment" ? (max||1) : undefined)}]
           }));
-        const updateRoom = (id, patch) =>
-          setState((s) => ({
-            ...s,
-            rooms: s.rooms.map((r) => (r.id === id ? { ...r, ...patch } : r)),
-          }));
-        const removeRoom = (id) =>
-          setState((s) => ({ ...s, rooms: s.rooms.filter((r) => r.id !== id) }));
+        const updateRoom = (id, patch)=>
+          setState(s=>({...s, rooms: s.rooms.map(r=> r.id===id ? {...r, ...patch} : r)}));
+        const removeRoom = (id)=>
+          setState(s=>({...s, rooms: s.rooms.filter(r=> r.id!==id)}));
 
         // CRUD: rezervace
-        function upsertReservation(dateIso, roomId, period, payload) {
-          setState((s) => {
-            const next = { ...s, reservations: { ...s.reservations } };
+        function upsertReservation(dateIso, roomId, period, payload){
+          setState(s=>{
+            const next = {...s, reservations: {...s.reservations}};
             const day = JSON.parse(JSON.stringify(next.reservations[dateIso] || {}));
             day[roomId] ||= {};
             day[roomId][period] = {
               teacherId: payload.teacherId,
               pieces: payload.pieces,
-              note: payload.note,
+              note: payload.note
             };
             next.reservations[dateIso] = day;
-            if (payload.repeat) {
-              next.recurring = [
-                ...s.recurring,
-                {
-                  id: uid("rec"),
-                  roomId,
-                  period,
-                  teacherId: payload.teacherId,
-                  pieces: payload.pieces,
-                  note: payload.note,
-                  startISO: dateIso,
-                },
-              ];
+            if(payload.repeat){
+              next.recurring = [...s.recurring, {
+                id: uid("rec"),
+                roomId, period,
+                teacherId: payload.teacherId,
+                pieces: payload.pieces,
+                note: payload.note,
+                startISO: dateIso
+              }];
             }
             return next;
           });
         }
-        function clearReservation(dateIso, roomId, period) {
-          setState((s) => {
-            const next = { ...s, reservations: { ...s.reservations } };
+        function clearReservation(dateIso, roomId, period){
+          setState(s=>{
+            const next = {...s, reservations: {...s.reservations}};
             const day = JSON.parse(JSON.stringify(next.reservations[dateIso] || {}));
-            if (day[roomId]) delete day[roomId][period];
+            if(day[roomId]) delete day[roomId][period];
             next.reservations[dateIso] = day;
             return next;
           });
         }
-        function stopRecurring(id) {
-          setState((s) => ({ ...s, recurring: s.recurring.filter((r) => r.id !== id) }));
+        function stopRecurring(id){
+          setState(s=>({...s, recurring: s.recurring.filter(r=>r.id!==id)}));
         }
 
         // formuláře
         const [newTeacher, setNewTeacher] = useState("");
-        const [newRoom, setNewRoom] = useState({ name: "", floor: "", code: "" });
+        const [newRoom, setNewRoom] = useState({ name:"", floor:"", code:"", type:"room", max:1 });
 
         return (
           <div className="p-4 max-w-7xl mx-auto grid gap-4">
@@ -425,74 +354,35 @@
             <header className="flex items-center justify-between">
               <h1 className="text-2xl font-bold">Rezervace Chromebooků a učeben</h1>
               <div className="flex items-center gap-2">
-                <button
-                  onClick={() => setSelectedDate(addWeeks(selectedDate, -1))}
-                  className="px-3 py-2 rounded-xl border bg-white"
-                >
-                  ◀ Týden
-                </button>
-                <button
-                  onClick={() => setDateModal(true)}
-                  className="px-3 py-2 rounded-xl border bg-white"
-                >
-                  📅 Datum
-                </button>
-                <button
-                  onClick={() => setSelectedDate(addWeeks(selectedDate, 1))}
-                  className="px-3 py-2 rounded-xl border bg-white"
-                >
-                  Týden ▶
-                </button>
-                <button
-                  onClick={() => setShowSettings((s) => !s)}
-                  className="px-3 py-2 rounded-xl border bg-white"
-                >
-                  {showSettings ? "Skrýt nastavení" : "Nastavení"}
-                </button>
+                <button onClick={()=>setSelectedDate(addWeeks(selectedDate,-1))} className="px-3 py-2 rounded-xl border bg-white">◀ Týden</button>
+                <button onClick={()=>setDateModal(true)} className="px-3 py-2 rounded-xl border bg-white">📅 Datum</button>
+                <button onClick={()=>setSelectedDate(addWeeks(selectedDate,1))} className="px-3 py-2 rounded-xl border bg-white">Týden ▶</button>
+                <button onClick={()=>setShowSettings(s=>!s)} className="px-3 py-2 rounded-xl border bg-white">{showSettings? 'Skrýt nastavení':'Nastavení'}</button>
               </div>
             </header>
 
             {/* Modal s výběrem data */}
-            <DateModal
-              open={dateModal}
-              valueISO={selectedIso}
-              onClose={() => setDateModal(false)}
-              onChange={(v) => v && setSelectedDate(parseISO(v))}
-            />
+            <DateModal open={dateModal} valueISO={selectedIso} onClose={()=>setDateModal(false)} onChange={(v)=> v && setSelectedDate(parseISO(v))} />
 
             {/* Pracovní týden (Po–Pá) s přehledem rezervací */}
             <section className="bg-white/80 rounded-2xl p-4">
               <div className="grid grid-cols-5 text-center text-xs font-medium text-gray-600 mb-2">
-                {["Po", "Út", "St", "Čt", "Pá"].map((n, i) => (
-                  <div key={i} className="py-1">
-                    {n}
-                  </div>
-                ))}
+                {["Po","Út","St","Čt","Pá"].map((n,i)=> <div key={i} className="py-1">{n}</div>)}
               </div>
               <div className="grid grid-cols-5 gap-2">
-                {workweek.map((d) => {
+                {workweek.map(d=>{
                   const sel = isSameDay(d, selectedDate);
-                  const items = daySummaryDetailed(d);
+                  const items = daySummary(d);
                   return (
-                    <button
-                      key={d.toISOString()}
-                      onClick={() => setSelectedDate(d)}
-                      className={`h-28 rounded-2xl border p-2 text-left bg-white hover:shadow ${
-                        sel ? "ring-2 ring-fuchsia-400" : ""
-                      }`}
-                    >
+                    <button key={d.toISOString()} onClick={()=>setSelectedDate(d)}
+                      className={`h-28 rounded-2xl border p-2 text-left bg-white hover:shadow ${sel? 'ring-2 ring-fuchsia-400':''}`}>
                       <div className="text-sm font-semibold">{shortDateCz(d)}</div>
                       <div className="mt-1 flex flex-wrap gap-1">
-                        {items.length === 0 ? (
-                          <Badge className="bg-green-100 border border-green-400 text-green-800">
-                            volno
-                          </Badge>
+                        {items.length===0 ? (
+                          <Badge className="bg-green-100 border border-green-400 text-green-800">volno</Badge>
                         ) : (
-                          items.map((it, idx) => (
-                            <Badge
-                              key={idx}
-                              className="bg-red-100 border border-red-400 text-red-800"
-                            >
+                          items.map((it,idx)=> (
+                            <Badge key={idx} className={it.recurring ? "bg-amber-100 border border-amber-400 text-amber-900" : "bg-red-100 border border-red-400 text-red-800"}>
                               {it.period}. {it.code}
                             </Badge>
                           ))
@@ -511,107 +401,51 @@
                 <table className="w-full text-sm">
                   <thead>
                     <tr>
-                      <th className="text-left p-2 sticky left-0 bg-white/90 backdrop-blur z-10">
-                        Učebna
-                      </th>
-                      {PERIODS.map((p) => (
-                        <th key={p} className="p-2 min-w-28 text-center">
-                          {p}. hod.
-                        </th>
-                      ))}
+                      <th className="text-left p-2 sticky left-0 bg-white/90 backdrop-blur z-10">Učebna</th>
+                      {PERIODS.map(p=> <th key={p} className="p-2 min-w-28 text-center">{p}. hod.</th>)}
                     </tr>
                   </thead>
                   <tbody>
-                    {state.rooms.map((room) => (
+                    {state.rooms.map(room=> (
                       <tr key={room.id} className="odd:bg-white/60 even:bg-white/40">
                         <th className="text-left p-2 sticky left-0 bg-white/80 backdrop-blur z-10">
                           <div className="font-medium">{room.name}</div>
                           <div className="mt-0.5 flex gap-2 items-center text-xs text-gray-700">
-                            <span className="px-1.5 py-0.5 rounded bg-gray-100 border">
-                              {room.code}
-                            </span>
-                            <span className="px-1.5 py-0.5 rounded bg-gray-100 border">
-                              {room.floor}
-                            </span>
+                            <span className="px-1.5 py-0.5 rounded bg-gray-100 border">{room.code}</span>
+                            <span className="px-1.5 py-0.5 rounded bg-gray-100 border">{room.floor}</span>
+                            <span className="px-1.5 py-0.5 rounded bg-gray-100 border">{room.type==='equipment' ? `pomůcka${room.max?` • max ${room.max}`:''}` : 'učebna'}</span>
                           </div>
                         </th>
-
-                        {PERIODS.map((p) => {
+                        {PERIODS.map(p=>{
                           const cell = effectivePlan?.[room.id]?.[p];
                           const isRecurring = !!cell?.recurringId;
                           const baseCls = cell
-                            ? isRecurring
-                              ? "bg-red-100 border-2 border-dashed border-red-500"
-                              : "bg-red-100 border border-red-400"
-                            : "bg-green-100 border border-green-400";
+                            ? (isRecurring ? 'bg-amber-100 border border-amber-400' : 'bg-red-100 border border-red-400')
+                            : 'bg-green-100 border border-green-400';
                           return (
                             <td key={p} className="align-top p-1">
                               <div className={`rounded-xl p-2 min-h-16 ${baseCls}`}>
                                 {cell ? (
                                   <div className="flex flex-col gap-1">
-                                    <div className="font-medium text-red-900 flex items-center gap-2">
-                                      {state.teachers.find((t) => t.id === cell.teacherId)?.name ||
-                                        "?"}
-                                      {cell.pieces ? (
-                                        <Badge className="bg-white/70 border text-xs">
-                                          {cell.pieces} ks
-                                        </Badge>
-                                      ) : null}
-                                      {isRecurring && (
-                                        <Badge className="bg-red-200 border border-red-500 text-red-900">
-                                          opak.
-                                        </Badge>
-                                      )}
+                                    <div className="font-medium flex items-center gap-2">
+                                      {state.teachers.find(t=>t.id===cell.teacherId)?.name || '?' }
+                                      {cell.pieces? <Badge className="bg-white/70 border text-xs">{cell.pieces} ks</Badge>:null}
+                                      {isRecurring && <Badge className="bg-amber-200 border border-amber-500 text-amber-900">opak.</Badge>}
                                     </div>
-                                    {cell.note && (
-                                      <div className="text-xs text-red-800">{cell.note}</div>
-                                    )}
+                                    {cell.note && <div className="text-xs">{cell.note}</div>}
                                     <div className="flex gap-2 mt-1">
                                       {!isRecurring && (
-                                        <button
-                                          className="px-2 py-1 rounded-lg border text-xs"
-                                          onClick={() =>
-                                            setDialog({
-                                              dateIso: selectedIso,
-                                              roomId: room.id,
-                                              period: p,
-                                              initial: cell,
-                                            })
-                                          }
-                                        >
-                                          Upravit
-                                        </button>
+                                        <button className="px-2 py-1 rounded-lg border text-xs" onClick={()=> setDialog({dateIso:selectedIso, roomId:room.id, period:p, initial:cell})}>Upravit</button>
                                       )}
                                       {isRecurring ? (
-                                        <button
-                                          className="px-2 py-1 rounded-lg border text-xs"
-                                          onClick={() => stopRecurring(cell.recurringId)}
-                                        >
-                                          Zrušit opak.
-                                        </button>
+                                        <button className="px-2 py-1 rounded-lg border text-xs" onClick={()=> stopRecurring(cell.recurringId)}>Zrušit opak.</button>
                                       ) : (
-                                        <button
-                                          className="px-2 py-1 rounded-lg border text-xs"
-                                          onClick={() => clearReservation(selectedIso, room.id, p)}
-                                        >
-                                          Smazat
-                                        </button>
+                                        <button className="px-2 py-1 rounded-lg border text-xs" onClick={()=> clearReservation(selectedIso, room.id, p)}>Smazat</button>
                                       )}
                                     </div>
                                   </div>
                                 ) : (
-                                  <button
-                                    className="w-full text-left text-xs text-green-900 hover:underline"
-                                    onClick={() =>
-                                      setDialog({
-                                        dateIso: selectedIso,
-                                        roomId: room.id,
-                                        period: p,
-                                      })
-                                    }
-                                  >
-                                    + Přidat
-                                  </button>
+                                  <button className="w-full text-left text-xs hover:underline" onClick={()=> setDialog({dateIso:selectedIso, roomId:room.id, period:p})}>+ Přidat</button>
                                 )}
                               </div>
                             </td>
@@ -631,107 +465,53 @@
                 <div>
                   <h2 className="text-lg font-semibold mb-2">Učitelé</h2>
                   <div className="flex gap-2 mb-3">
-                    <input
-                      className="flex-1 border rounded-xl px-3 py-2"
-                      placeholder="Jméno a příjmení"
-                      value={newTeacher}
-                      onChange={(e) => setNewTeacher(e.target.value)}
-                    />
-                    <button
-                      onClick={() => {
-                        if (newTeacher.trim()) {
-                          addTeacher(newTeacher.trim());
-                          setNewTeacher("");
-                        }
-                      }}
-                      className="px-3 py-2 rounded-xl bg-black text-white"
-                    >
-                      Přidat
-                    </button>
+                    <input className="flex-1 border rounded-xl px-3 py-2" placeholder="Jméno a příjmení" value={newTeacher} onChange={e=>setNewTeacher(e.target.value)} />
+                    <button onClick={()=>{ if(newTeacher.trim()) { addTeacher(newTeacher.trim()); setNewTeacher(''); } }} className="px-3 py-2 rounded-xl bg-black text-white">Přidat</button>
                   </div>
                   <div className="flex flex-wrap gap-2">
-                    {state.teachers.map((t) => (
-                      <span
-                        key={t.id}
-                        className="inline-flex items-center gap-2 px-3 py-1 rounded-full border"
-                      >
+                    {state.teachers.map(t=> (
+                      <span key={t.id} className="inline-flex items-center gap-2 px-3 py-1 rounded-full border">
                         {t.name}
-                        <button className="text-red-600" onClick={() => removeTeacher(t.id)}>
-                          ✕
-                        </button>
+                        <button className="text-red-600" onClick={()=>removeTeacher(t.id)}>✕</button>
                       </span>
                     ))}
                   </div>
                 </div>
 
-                {/* Učebny */}
+                {/* Místnosti */}
                 <div>
-                  <h2 className="text-lg font-semibold mb-2">Učebny / Vozíky</h2>
-                  <div className="grid grid-cols-6 gap-2 mb-3">
-                    <input
-                      className="col-span-3 border rounded-xl px-3 py-2"
-                      placeholder="Název"
-                      value={newRoom.name}
-                      onChange={(e) => setNewRoom((v) => ({ ...v, name: e.target.value }))}
-                    />
-                    <input
-                      className="col-span-2 border rounded-xl px-3 py-2"
-                      placeholder="Patro"
-                      value={newRoom.floor}
-                      onChange={(e) => setNewRoom((v) => ({ ...v, floor: e.target.value }))}
-                    />
-                    <input
-                      className="col-span-1 border rounded-xl px-3 py-2"
-                      placeholder="Zkratka"
-                      value={newRoom.code}
-                      onChange={(e) => setNewRoom((v) => ({ ...v, code: e.target.value }))}
-                    />
-                    <button
-                      className="col-span-1 px-3 py-2 rounded-xl bg-black text-white"
-                      onClick={() => {
-                        if (newRoom.name.trim()) {
-                          addRoom(
-                            newRoom.name.trim(),
-                            newRoom.floor.trim(),
-                            newRoom.code.trim()
-                          );
-                          setNewRoom({ name: "", floor: "", code: "" });
-                        }
-                      }}
-                    >
+                  <h2 className="text-lg font-semibold mb-2">Učebny / Pomůcky</h2>
+                  <div className="grid grid-cols-7 gap-2 mb-3">
+                    <input className="col-span-2 border rounded-xl px-3 py-2" placeholder="Název" value={newRoom.name} onChange={e=>setNewRoom(v=>({...v, name:e.target.value}))} />
+                    <input className="col-span-2 border rounded-xl px-3 py-2" placeholder="Patro" value={newRoom.floor} onChange={e=>setNewRoom(v=>({...v, floor:e.target.value}))} />
+                    <input className="col-span-1 border rounded-xl px-3 py-2" placeholder="Zkratka" value={newRoom.code} onChange={e=>setNewRoom(v=>({...v, code:e.target.value}))} />
+                    <select className="col-span-1 border rounded-xl px-3 py-2" value={newRoom.type} onChange={e=>setNewRoom(v=>({...v, type:e.target.value}))}>
+                      <option value="room">Učebna</option>
+                      <option value="equipment">Pomůcka</option>
+                    </select>
+                    <input className="col-span-1 border rounded-xl px-3 py-2" type="number" min="1" placeholder="Max" value={newRoom.max} onChange={e=>setNewRoom(v=>({...v, max:Number(e.target.value)}))} disabled={newRoom.type!=="equipment"} />
+                    <button className="col-span-7 md:col-span-1 px-3 py-2 rounded-xl bg-black text-white"
+                            onClick={()=>{ if(newRoom.name.trim()) { addRoom(newRoom.name.trim(), newRoom.floor.trim(), newRoom.code.trim(), newRoom.type, newRoom.max); setNewRoom({name:"", floor:"", code:"", type:"room", max:1}); } }}>
                       Přidat
                     </button>
                   </div>
+
                   <div className="flex flex-col gap-2">
-                    {state.rooms.map((r) => (
-                      <div
-                        key={r.id}
-                        className="flex items-center justify-between rounded-xl border bg-white/70 px-3 py-2"
-                      >
+                    {state.rooms.map(r=> (
+                      <div key={r.id} className="flex items-center justify-between rounded-xl border bg-white/70 px-3 py-2">
                         <div>
                           <div className="font-medium">{r.name}</div>
                           <div className="mt-0.5 flex gap-2 items-center text-xs text-gray-700">
+                            <span className="px-1.5 py-0.5 rounded bg-gray-100 border">{r.code}</span>
+                            <span className="px-1.5 py-0.5 rounded bg-gray-100 border">{r.floor}</span>
                             <span className="px-1.5 py-0.5 rounded bg-gray-100 border">
-                              {r.code}
-                            </span>
-                            <span className="px-1.5 py-0.5 rounded bg-gray-100 border">
-                              {r.floor}
+                              {r.type==='equipment' ? `pomůcka${r.max?` • max ${r.max}`:''}` : 'učebna'}
                             </span>
                           </div>
                         </div>
                         <div className="flex gap-2">
-                          <button
-                            className="px-2 py-1 rounded-lg border text-xs"
-                            onClick={() => setEditingRoom(r)}
-                          >
-                            Upravit
-                          </button>
-                          <button
-                            className="px-2 py-1 rounded-lg border text-xs text-red-700"
-                            onClick={() => removeRoom(r.id)}
-                          >
-                            Smazat
-                          </button>
+                          <button className="px-2 py-1 rounded-lg border text-xs" onClick={()=> setEditingRoom(r)}>Upravit</button>
+                          <button className="px-2 py-1 rounded-lg border text-xs text-red-700" onClick={()=>removeRoom(r.id)}>Smazat</button>
                         </div>
                       </div>
                     ))}
@@ -741,31 +521,18 @@
                 {/* Opakované rezervace */}
                 <div>
                   <h2 className="text-lg font-semibold mb-2">Opakované rezervace</h2>
-                  {state.recurring.length === 0 && (
-                    <div className="text-sm text-gray-600">Zatím žádné.</div>
-                  )}
+                  {state.recurring.length===0 && <div className="text-sm text-gray-600">Zatím žádné.</div>}
                   <div className="flex flex-col gap-2">
-                    {state.recurring.map((r) => (
-                      <div
-                        key={r.id}
-                        className="flex items-center justify-between rounded-xl border bg-red-50 px-3 py-2"
-                      >
+                    {state.recurring.map(r=> (
+                      <div key={r.id} className="flex items-center justify-between rounded-xl border bg-amber-50 px-3 py-2">
                         <div className="text-sm">
-                          <span className="font-medium">
-                            {state.rooms.find((x) => x.id === r.roomId)?.name}
-                          </span>
-                          {" · "}
-                          {state.teachers.find((t) => t.id === r.teacherId)?.name}
-                          {r.pieces ? ` · ${r.pieces} ks` : ""}
-                          {r.note ? ` · ${r.note}` : ""}
+                          <span className="font-medium">{state.rooms.find(x=>x.id===r.roomId)?.name}</span>
+                          {" · "}{state.teachers.find(t=>t.id===r.teacherId)?.name}
+                          {r.pieces? ` · ${r.pieces} ks`:''}
+                          {r.note? ` · ${r.note}`:''}
                           <div className="text-xs text-gray-600">od {r.startISO}</div>
                         </div>
-                        <button
-                          onClick={() => stopRecurring(r.id)}
-                          className="px-3 py-1 rounded-xl border"
-                        >
-                          Zrušit
-                        </button>
+                        <button onClick={()=>stopRecurring(r.id)} className="px-3 py-1 rounded-xl border">Zrušit</button>
                       </div>
                     ))}
                   </div>
@@ -776,21 +543,17 @@
             {/* Dialogy */}
             <ReservationDialog
               open={!!dialog}
-              onClose={() => setDialog(null)}
+              onClose={()=>setDialog(null)}
               teachers={state.teachers}
               initial={dialog?.initial}
-              onSave={(payload) => {
-                upsertReservation(dialog.dateIso, dialog.roomId, dialog.period, payload);
-              }}
+              room={state.rooms.find(r=>r.id===dialog?.roomId)}
+              onSave={(payload)=>{ upsertReservation(dialog.dateIso, dialog.roomId, dialog.period, payload); }}
             />
             <RoomDialog
               open={!!editingRoom}
               initial={editingRoom}
-              onClose={() => setEditingRoom(null)}
-              onSave={(patch) => {
-                updateRoom(editingRoom.id, patch);
-                setEditingRoom(null);
-              }}
+              onClose={()=>setEditingRoom(null)}
+              onSave={(patch)=>{ updateRoom(editingRoom.id, patch); setEditingRoom(null); }}
             />
           </div>
         );
