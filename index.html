@@ -124,7 +124,7 @@
               </div>
               <div className="flex justify-end gap-2 mt-4">
                 <button onClick={onClose} className="px-3 py-2 rounded-xl border">Zrušit</button>
-                {/* posíláme max jen u pomůcek */}
+                <!-- max posíláme jen u pomůcek -->
                 <button
                   onClick={()=>{
                     const payload = { name, floor, code, type };
@@ -280,7 +280,7 @@
         const [dragRoomId, setDragRoomId] = useState(null);
         const [isDraggingRoom, setIsDraggingRoom] = useState(false);
 
-        // === useMemo, které MUSÍ být před jakýmkoli returnem ===
+        // useMemo MUSÍ být před jakýmkoli returnem
         const workweek = useMemo(()=>{
           const start = startOfWeek(selectedDate);
           return [0,1,2,3,4].map(off=>addDays(start,off));
@@ -421,15 +421,17 @@
         };
         const removeRoom = async (id)=> await db.collection('rooms').doc(id).delete();
 
-        // CRUD reservations
+        // CRUD reservations / recurring
         async function upsertReservation(dateIso, roomId, period, payload, editingRecurringId=null){
           const userId = authUser?.uid || 'unknown';
 
+          // === Opakování ===
           if(payload.repeat || editingRecurringId){
             const origSnap = editingRecurringId ? await db.collection('recurring').doc(editingRecurringId).get() : null;
             const seriesStartISO = (origSnap && origSnap.exists) ? origSnap.data().startISO : dateIso;
 
             if(payload.repeat){
+              // odstranit single-slot v den startu (aby se nedubloval)
               const daySnap = await db.collection('reservations')
                 .where('dateISO','==', dateIso)
                 .where('roomId','==', roomId)
@@ -437,18 +439,40 @@
                 .get();
               daySnap.forEach(d=> d.ref.delete());
 
+              // společná část dokumentu
               const rec = {
-                roomId, period, teacherId: payload.teacherId, pieces: payload.pieces, note: payload.note,
+                roomId,
+                period,
+                teacherId: payload.teacherId,
+                // pieces jen pokud je (pomůcka)
+                ...(typeof payload.pieces === 'number' ? { pieces: payload.pieces } : {}),
+                ...(payload.note ? { note: payload.note } : {}),
                 startISO: seriesStartISO,
-                allowElsewhere: (payload.repeat?.allowElsewhere===true) ? true : firebase.firestore.FieldValue.delete(),
-                createdBy: userId, updatedAt: firebase.firestore.FieldValue.serverTimestamp(),
+                createdBy: userId,
+                updatedAt: firebase.firestore.FieldValue.serverTimestamp(),
               };
+
+              // allowElsewhere: u ADD přidáme jen pokud je true; u EDIT můžeme mazat přes delete()
+              const wantsElsewhere = payload.repeat?.allowElsewhere === true;
+              if (editingRecurringId) {
+                rec.allowElsewhere = wantsElsewhere ? true : firebase.firestore.FieldValue.delete();
+              } else if (wantsElsewhere) {
+                rec.allowElsewhere = true; // u add jen true, jinak pole vůbec neposíláme
+              }
+
+              // módy: until / weeks
               if(payload.repeat.mode==='until'){
-                rec.mode='until'; rec.endISO=schoolYearEndISO(parseISO(seriesStartISO)); rec.weeks = firebase.firestore.FieldValue.delete();
+                rec.mode = 'until';
+                rec.endISO = schoolYearEndISO(parseISO(seriesStartISO));
+                // u editace můžeme smazat weeks, u add ho prostě nepošleme
+                if (editingRecurringId) rec.weeks = firebase.firestore.FieldValue.delete();
               } else {
                 const w = Math.max(1, Number(payload.repeat.weeks)||1);
-                rec.mode='weeks'; rec.weeks=w; rec.endISO = toISO(addWeeks(parseISO(seriesStartISO), w-1));
+                rec.mode = 'weeks';
+                rec.weeks = w;
+                rec.endISO = toISO(addWeeks(parseISO(seriesStartISO), w-1));
               }
+
               if(editingRecurringId){
                 await db.collection('recurring').doc(editingRecurringId).set(rec, {merge:true});
               } else {
@@ -456,23 +480,37 @@
                 await db.collection('recurring').add(rec);
               }
             } else {
+              // vypnuto opakování → smazat sérii, uložit single
               if(editingRecurringId){
                 await db.collection('recurring').doc(editingRecurringId).delete();
               }
-              await db.collection('reservations').add({
-                dateISO: dateIso, roomId, period,
-                teacherId: payload.teacherId, pieces: payload.pieces, note: payload.note,
-                createdBy: userId, createdAt: firebase.firestore.FieldValue.serverTimestamp(),
-              });
+              const single = {
+                dateISO: dateIso,
+                roomId,
+                period,
+                teacherId: payload.teacherId,
+                ...(typeof payload.pieces === 'number' ? { pieces: payload.pieces } : {}),
+                ...(payload.note ? { note: payload.note } : {}),
+                createdBy: userId,
+                createdAt: firebase.firestore.FieldValue.serverTimestamp(),
+              };
+              await db.collection('reservations').add(single);
             }
-          } else {
-            await db.collection('reservations').add({
-              dateISO: dateIso, roomId, period,
-              teacherId: payload.teacherId, pieces: payload.pieces, note: payload.note,
-              createdBy: userId,
-              createdAt: firebase.firestore.FieldValue.serverTimestamp(),
-            });
+            return;
           }
+
+          // === Jednorázová rezervace ===
+          const single = {
+            dateISO: dateIso,
+            roomId,
+            period,
+            teacherId: payload.teacherId,
+            ...(typeof payload.pieces === 'number' ? { pieces: payload.pieces } : {}), // jen u pomůcek
+            ...(payload.note ? { note: payload.note } : {}),
+            createdBy: userId,
+            createdAt: firebase.firestore.FieldValue.serverTimestamp(),
+          };
+          await db.collection('reservations').add(single);
         }
 
         async function clearReservation(dateIso,roomId,period){
@@ -488,7 +526,6 @@
         }
 
         const canUseApp = !!authUser && !!me && me.approved;
-        const isAdmin = !!me?.isAdmin;
 
         // ===== AUTH obrazovky =====
         if(loadingAuth){
@@ -523,6 +560,37 @@
           );
         }
 
+        // occursOn + effective plan (pro render níže)
+        function occursOn(dateISO, rec){
+          if (cmpISO(dateISO, rec.startISO) < 0) return false;
+          const days = diffDays(dateISO, rec.startISO);
+          if (days % 7 !== 0) return false;
+          if (rec.mode === 'weeks' && typeof rec.weeks === 'number'){
+            const weekIndex = Math.floor(days / 7);
+            return weekIndex >= 0 && weekIndex < rec.weeks;
+          }
+          if (rec.endISO && cmpISO(dateISO, rec.endISO) > 0) return false;
+          return true;
+        }
+        const effectivePlan = useMemo(()=>{
+          const plan = JSON.parse(JSON.stringify(reservations || {}));
+          (recurring || []).forEach(r=>{
+            if(!occursOn(selectedIso, r)) return;
+            plan[r.roomId] ??= {};
+            if(!plan[r.roomId][r.period]){
+              plan[r.roomId][r.period] = {
+                teacherId: r.teacherId,
+                pieces: r.pieces,
+                note: r.note,
+                recurringId: r.id,
+                allowElsewhere: !!r.allowElsewhere,
+                createdBy: r.createdBy,
+              };
+            }
+          });
+          return plan;
+        }, [reservations, recurring, selectedIso]);
+
         /*********************
          * Render APP
          *********************/
@@ -540,16 +608,12 @@
               </div>
             </header>
 
-            {/* modal datum */}
-            <DateModal open={dateModal} valueISO={toISO(selectedDate)} onClose={()=>setDateModal(false)} onChange={(v)=>v&&setSelectedDate(parseISO(v))}/>
-
             {/* pracovní týden – mobilní horizontální scroll */}
             <section className="bg-white/80 rounded-2xl p-4">
               <div className="hidden sm:grid grid-cols-5 text-center text-xs font-medium text-gray-600 mb-2">{["Po","Út","St","Čt","Pá"].map((n,i)=><div key={i} className="py-1">{n}</div>)}</div>
               <div className="sm:grid sm:grid-cols-5 gap-2 flex overflow-x-auto -mx-2 px-2">
                 {workweek.map(d=>{
                   const sel=isSameDay(d,selectedDate);
-                  // přehled z opakování
                   const items = (()=> {
                     const iso = toISO(d), arr=[];
                     (recurring||[]).forEach(r=>{
@@ -600,7 +664,6 @@
                             const cls = !cell ? CELLCLS.free
                                       : isRecurring ? (recurringBlue ? CELLCLS.recBlue : CELLCLS.recAmber)
                                       : CELLCLS.single;
-                            const canDelete = !!(isRecurring ? false : ( (cell?.createdBy && authUser?.uid && cell.createdBy===authUser.uid) ));
 
                             return (
                               <td key={p} className="align-top p-1">
@@ -627,9 +690,9 @@
                                       <div className="flex gap-2 mt-1">
                                         {isRecurring ? (
                                           <button className="px-2 py-1 rounded-lg border text-xs" onClick={(e)=>{e.stopPropagation(); stopRecurring(cell.recurringId);}}>Zrušit opak.</button>
-                                        ) : canDelete ? (
+                                        ) : (
                                           <button className="px-2 py-1 rounded-lg border text-xs" onClick={(e)=>{e.stopPropagation(); clearReservation(selectedIso,room.id,p);}}>Smazat</button>
-                                        ) : null}
+                                        )}
                                       </div>
                                     </div>
                                   ) : <span className="w-full text-left text-xs block text-green-900">+ Přidat</span>}
