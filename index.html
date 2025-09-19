@@ -15,7 +15,7 @@
     <!-- Tailwind (dev) -->
     <script src="https://cdn.tailwindcss.com"></script>
 
-    <!-- Firebase compat UMD (pro jednoduché vložení do jedné stránky) -->
+    <!-- Firebase compat UMD -->
     <script src="https://www.gstatic.com/firebasejs/9.6.10/firebase-app-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/9.6.10/firebase-auth-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/9.6.10/firebase-firestore-compat.js"></script>
@@ -42,8 +42,8 @@
       const diffDays=(aISO,bISO)=> Math.round((parseISO(aISO) - parseISO(bISO)) / 86400000);
       const schoolYearEndISO=(date)=>{
         const y=date.getFullYear(); const m=date.getMonth();
-        const endYear=(m>=8? y+1:y); // září→červen následující rok
-        return new Date(endYear,5,30).toISOString().slice(0,10); // 30. 6.
+        const endYear=(m>=8? y+1:y);
+        return new Date(endYear,5,30).toISOString().slice(0,10);
       };
       const PERIODS = ["0","1","2","3","4","5","6","7","8"];
       const Badge=({children,className=''})=> <span className={`inline-block text-[10px] px-1.5 py-0.5 rounded ${className}`}>{children}</span>;
@@ -124,7 +124,7 @@
               </div>
               <div className="flex justify-end gap-2 mt-4">
                 <button onClick={onClose} className="px-3 py-2 rounded-xl border">Zrušit</button>
-                <!-- DŮLEŽITÁ ÚPRAVA: posíláme max jen u pomůcek -->
+                {/* DŮLEŽITÁ ÚPRAVA: posíláme max jen u pomůcek */}
                 <button
                   onClick={()=>{
                     const payload = { name, floor, code, type };
@@ -259,24 +259,24 @@
         const selectedIso = toISO(selectedDate);
 
         // Auth & role
-        const [authUser,setAuthUser]=useState(null);  // Firebase user
-        const [me,setMe]=useState(null);              // /users/{uid}
+        const [authUser,setAuthUser]=useState(null);
+        const [me,setMe]=useState(null);
         const [loadingAuth,setLoadingAuth]=useState(true);
         const [waitingApproval,setWaitingApproval]=useState(false);
 
         // Data
         const [rooms,setRooms]=useState([]);
-        const [teachers,setTeachers]=useState([]); // schválení uživatelé -> jména
-        const [reservations,setReservations]=useState({}); // map roomId -> { period -> cell }
+        const [teachers,setTeachers]=useState([]);
+        const [reservations,setReservations]=useState({});
         const [recurring,setRecurring]=useState([]);
-        const [allUsers,setAllUsers]=useState([]); // pro admin UI
+        const [allUsers,setAllUsers]=useState([]);
         const [showSettings,setShowSettings]=useState(false);
         const [dateModal,setDateModal]=useState(false);
         const [editingRoom,setEditingRoom]=useState(null);
         const [creatingRoom,setCreatingRoom]=useState(false);
-        const [dialog,setDialog]=useState(null); // {dateIso,roomId,period,initial?, editingRecurringId?}
+        const [dialog,setDialog]=useState(null);
 
-        // DnD pro místnosti – jen UI pořadí (nepersistuje)
+        // DnD – jen UI pořadí
         const [dragRoomId, setDragRoomId] = useState(null);
         const [isDraggingRoom, setIsDraggingRoom] = useState(false);
 
@@ -286,11 +286,8 @@
             setAuthUser(u);
             if(!u){ setMe(null); setWaitingApproval(false); setLoadingAuth(false); return; }
 
-            // vytvoř/načti profil v /users/{uid}
             const ref = db.collection('users').doc(u.uid);
             const exists = await ref.get();
-
-            // Auto-admin pro dgunka@gymnaziumbma.cz při prvním přihlášení
             const isBootstrapAdmin = (u.email === 'dgunka@gymnaziumbma.cz');
 
             if(!exists.exists){
@@ -298,7 +295,7 @@
                 email: u.email || '',
                 displayName: u.displayName || (u.email? u.email.split('@')[0] : 'Uživatel'),
                 isAdmin: isBootstrapAdmin,
-                approved: isBootstrapAdmin,    // admin je rovnou schválen
+                approved: isBootstrapAdmin,
                 createdAt: firebase.firestore.FieldValue.serverTimestamp(),
               }, {merge:true});
             } else if (isBootstrapAdmin) {
@@ -314,7 +311,7 @@
           return () => unsub && unsub();
         },[]);
 
-        // Uživatelé (učitelé = approved users)
+        // Uživatelé
         useEffect(()=>{
           if(!authUser || !me || waitingApproval) return;
           const unsubUsers = db.collection('users').onSnapshot((q)=>{
@@ -335,7 +332,7 @@
           return () => unsub && unsub();
         },[!!authUser, !!me, waitingApproval]);
 
-        // Reservations pro vybraný den
+        // Reservations (den)
         useEffect(()=>{
           if(!authUser || !me || waitingApproval) return;
           const unsub = db.collection('reservations').where('dateISO','==',selectedIso).onSnapshot(q=>{
@@ -350,7 +347,7 @@
           return () => unsub && unsub();
         },[!!authUser, !!me, waitingApproval, selectedIso]);
 
-        // Recurring (celé; filtrujeme na klientu)
+        // Recurring
         useEffect(()=>{
           if(!authUser || !me || waitingApproval) return;
           const unsub = db.collection('recurring').onSnapshot(q=>{
@@ -359,7 +356,7 @@
           return () => unsub && unsub();
         },[!!authUser, !!me, waitingApproval]);
 
-        // ===== occursOn =====
+        // occursOn
         function occursOn(dateISO, rec){
           if (cmpISO(dateISO, rec.startISO) < 0) return false;
           const days = diffDays(dateISO, rec.startISO);
@@ -372,7 +369,7 @@
           return true;
         }
 
-        // ===== Effective plan =====
+        // Effective plan
         const effectivePlan = useMemo(()=>{
           const plan = JSON.parse(JSON.stringify(reservations || {}));
           (recurring || []).forEach(r=>{
@@ -392,7 +389,7 @@
           return plan;
         }, [reservations, recurring, selectedIso]);
 
-        // ===== Týdenní panel – přehled dne =====
+        // týdenní přehled
         function daySummary(date){
           const iso = toISO(date), items=[];
           (recurring||[]).forEach(r=>{
@@ -403,43 +400,33 @@
           return items;
         }
 
-        // ===== CRUD – rooms (admin) =====
+        // CRUD rooms
         const addRoom = async (payload)=>{
-          // sanitizace payloadu – neposílat undefined
           const data = {
             name: (payload.name || '').trim(),
             floor: (payload.floor || '').trim(),
             code: (payload.code || payload.name?.slice(0,2)?.toUpperCase() || 'XX').trim(),
             type: payload.type === 'equipment' ? 'equipment' : 'room',
           };
-          if (data.type === 'equipment') {
-            data.max = Math.max(1, Number(payload.max) || 1);
-          }
+          if (data.type === 'equipment') data.max = Math.max(1, Number(payload.max) || 1);
           await db.collection('rooms').add(data);
         };
-
         const updateRoom = async (id, patch)=>{
           const data = {};
           if (typeof patch.name  !== 'undefined')  data.name  = (patch.name  || '').trim();
           if (typeof patch.floor !== 'undefined')  data.floor = (patch.floor || '').trim();
           if (typeof patch.code  !== 'undefined')  data.code  = (patch.code  || '').trim();
           if (typeof patch.type  !== 'undefined')  data.type  = patch.type === 'equipment' ? 'equipment' : 'room';
-
-          // max – jen pro pomůcky; při přepnutí na "room" pole smaž
           if ((data.type || patch.type) === 'equipment') {
-            if (typeof patch.max !== 'undefined') {
-              data.max = Math.max(1, Number(patch.max) || 1);
-            }
+            if (typeof patch.max !== 'undefined') data.max = Math.max(1, Number(patch.max) || 1);
           } else if ('max' in patch) {
             data.max = firebase.firestore.FieldValue.delete();
           }
-
           await db.collection('rooms').doc(id).set(data, { merge: true });
         };
-
         const removeRoom = async (id)=> await db.collection('rooms').doc(id).delete();
 
-        // ===== CRUD – reservations/recurring =====
+        // CRUD reservations
         async function upsertReservation(dateIso, roomId, period, payload, editingRecurringId=null){
           const userId = authUser?.uid || 'unknown';
 
@@ -448,7 +435,6 @@
             const seriesStartISO = (origSnap && origSnap.exists) ? origSnap.data().startISO : dateIso;
 
             if(payload.repeat){
-              // odstranit případný single-slot v den startu
               const daySnap = await db.collection('reservations')
                 .where('dateISO','==', dateIso)
                 .where('roomId','==', roomId)
@@ -475,7 +461,6 @@
                 await db.collection('recurring').add(rec);
               }
             } else {
-              // vypnuto opakování → smazat sérii, uložit single
               if(editingRecurringId){
                 await db.collection('recurring').doc(editingRecurringId).delete();
               }
@@ -486,7 +471,6 @@
               });
             }
           } else {
-            // Jednorázová rezervace
             await db.collection('reservations').add({
               dateISO: dateIso, roomId, period,
               teacherId: payload.teacherId, pieces: payload.pieces, note: payload.note,
@@ -508,25 +492,9 @@
           await db.collection('recurring').doc(id).delete();
         }
 
-        // ===== UI hlavička (login/out) =====
         const canUseApp = !!authUser && !!me && me.approved;
         const isAdmin = !!me?.isAdmin;
 
-        const openCell = (room, period)=>{
-          const cell = effectivePlan?.[room.id]?.[period];
-          if(cell){
-            if(cell.recurringId){
-              const rec = recurring.find(r=>r.id===cell.recurringId);
-              setDialog({dateIso:selectedIso, roomId:room.id, period, initial:cell, editingRecurringId: rec?.id});
-            } else {
-              setDialog({dateIso:selectedIso, roomId:room.id, period, initial:cell});
-            }
-          } else {
-            setDialog({dateIso:selectedIso, roomId:room.id, period});
-          }
-        };
-
-        // ===== AUTH stavy =====
         if(loadingAuth){
           return <div className="max-w-3xl mx-auto p-8">Načítám přihlášení…</div>;
         }
@@ -559,18 +527,13 @@
           );
         }
 
-        // ===== WORKWEEK =====
         const workweek = useMemo(()=>{
           const start = startOfWeek(selectedDate);
           return [0,1,2,3,4].map(off=>addDays(start,off));
         }, [selectedDate]);
 
-        /*********************
-         * Render APP
-         *********************/
         return (
           <div className="p-4 max-w-7xl mx-auto grid gap-4">
-            {/* horní lišta */}
             <header className="flex items-center justify-between">
               <h1 className="text-2xl font-bold">Rezervace Chromebooků a učeben</h1>
               <div className="flex items-center gap-2">
@@ -582,15 +545,21 @@
               </div>
             </header>
 
-            {/* modal datum */}
             <DateModal open={dateModal} valueISO={toISO(selectedDate)} onClose={()=>setDateModal(false)} onChange={(v)=>v&&setSelectedDate(parseISO(v))}/>
 
-            {/* pracovní týden – mobilní horizontální scroll */}
             <section className="bg-white/80 rounded-2xl p-4">
               <div className="hidden sm:grid grid-cols-5 text-center text-xs font-medium text-gray-600 mb-2">{["Po","Út","St","Čt","Pá"].map((n,i)=><div key={i} className="py-1">{n}</div>)}</div>
               <div className="sm:grid sm:grid-cols-5 gap-2 flex overflow-x-auto -mx-2 px-2">
                 {workweek.map(d=>{
-                  const sel=isSameDay(d,selectedDate), items=daySummary(d);
+                  const sel=isSameDay(d,selectedDate), items=(()=>{
+                    const iso = toISO(d), arr=[];
+                    (recurring||[]).forEach(r=>{
+                      if(!occursOn(iso, r)) return;
+                      arr.push({period:r.period, code:(rooms.find(x=>x.id===r.roomId)?.code||"?"), kind: r.allowElsewhere ? 'rec-blue' : 'rec-amber'});
+                    });
+                    arr.sort((a,b)=> Number(a.period)-Number(b.period) || a.code.localeCompare(b.code));
+                    return arr;
+                  })();
                   return(
                     <button key={d.toISOString()} onClick={()=>setSelectedDate(d)} className={`sm:h-28 h-24 sm:w-auto w-40 shrink-0 rounded-2xl border p-2 text-left bg-white hover:shadow ${sel?'ring-2 ring-fuchsia-400':''}`}>
                       <div className="text-sm font-semibold">{shortDateCz(d)}</div>
@@ -609,7 +578,6 @@
               </div>
             </section>
 
-            {/* denní plán */}
             <section className="bg-white/80 rounded-2xl p-4">
               <h2 className="text-lg font-semibold mb-2">{fullDateCz(selectedDate)}</h2>
               <div className="-mx-2 sm:mx-0 overflow-x-auto">
@@ -632,8 +600,8 @@
                             const cls = !cell ? CELLCLS.free
                                       : isRecurring ? (recurringBlue ? CELLCLS.recBlue : CELLCLS.recAmber)
                                       : CELLCLS.single;
-                            // práva: admin vždy; jinak pouze autor single rezervace
-                            const canDelete = !!(isRecurring ? false : (isAdmin || (cell?.createdBy && authUser?.uid && cell.createdBy===authUser.uid)));
+                            const canDelete = !!(isRecurring ? false : ( (cell?.createdBy && authUser?.uid && cell.createdBy===authUser.uid) ));
+
                             return (
                               <td key={p} className="align-top p-1">
                                 <div className={`rounded-xl p-2 min-h-16 ${cls}`} onClick={()=>{
@@ -677,7 +645,6 @@
               </div>
             </section>
 
-            {/* nastavení */}
             {showSettings && (
               <section className="bg-white/80 rounded-2xl p-4 grid grid-cols-1 lg:grid-cols-3 gap-4">
                 <div>
@@ -755,7 +722,6 @@
               </section>
             )}
 
-            {/* dialogy */}
             <ReservationDialog
               open={!!dialog}
               onClose={()=>setDialog(null)}
