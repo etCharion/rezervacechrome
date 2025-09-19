@@ -9,10 +9,10 @@
     <script crossorigin src="https://unpkg.com/react@18/umd/react.development.js"></script>
     <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
 
-    <!-- Babel pro JSX (dev) -->
+    <!-- Babel pro JSX (dev only) -->
     <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
 
-    <!-- Tailwind (dev) -->
+    <!-- Tailwind (dev only) -->
     <script src="https://cdn.tailwindcss.com"></script>
 
     <!-- Firebase compat UMD -->
@@ -25,47 +25,29 @@
     <div id="root"></div>
 
     <script type="text/babel">
-      /****************************************************
-       * Utilitky
-       ****************************************************/
-      const { useState, useEffect, useMemo } = React;
+      const {useState,useEffect,useMemo} = React;
 
-      const toISO = (d) => new Date(d.getFullYear(), d.getMonth(), d.getDate()).toISOString().slice(0, 10);
-      const parseISO = (s) => { const [y,m,dd]=s.split('-').map(Number); return new Date(y, m-1, dd); };
-      const addDays = (d,n)=>{ const x=new Date(d); x.setDate(x.getDate()+n); return x; };
-      const addWeeks=(d,n)=>addDays(d,n*7);
-      const startOfWeek=(d)=>{ const iso=d.getDay()||7; return addDays(new Date(d.getFullYear(),d.getMonth(),d.getDate()),-(iso-1)); };
-      const isSameDay=(a,b)=>a.getFullYear()===b.getFullYear() && a.getMonth()===b.getMonth() && a.getDate()===b.getDate();
-      const fullDateCz=(d)=> d.toLocaleDateString('cs-CZ',{weekday:'long', day:'numeric', month:'long', year:'numeric'});
-      const shortDateCz=(d)=> d.toLocaleDateString('cs-CZ',{day:'numeric', month:'numeric'});
-      const cmpISO=(a,b)=>{ const A=parseISO(a), B=parseISO(b); if(A<B) return -1; if(A>B) return 1; return 0; };
-      const diffDays=(aISO,bISO)=> Math.round((parseISO(aISO) - parseISO(bISO)) / 86400000);
+      // ---------- util ----------
+      const toISO = d => new Date(d.getFullYear(), d.getMonth(), d.getDate()).toISOString().slice(0,10);
+      const parseISO = s => {const [y,m,dd]=s.split('-').map(Number); return new Date(y, m-1, dd);};
+      const addDays = (d,n)=>{const x=new Date(d); x.setDate(x.getDate()+n); return x;};
+      const addWeeks = (d,n)=>addDays(d,n*7);
+      const startOfWeek = (d)=>{const iso=d.getDay()||7; return addDays(new Date(d.getFullYear(),d.getMonth(),d.getDate()),-(iso-1));};
+      const isSameDay = (a,b)=> a.getFullYear()===b.getFullYear() && a.getMonth()===b.getMonth() && a.getDate()===b.getDate();
+      const fullDateCz=(d)=> d.toLocaleDateString('cs-CZ',{weekday:'long',day:'numeric',month:'long',year:'numeric'});
+      const shortDateCz=(d)=> d.toLocaleDateString('cs-CZ',{day:'numeric',month:'numeric'});
+      const cmpISO=(a,b)=>{const A=parseISO(a),B=parseISO(b); if(A<B) return -1; if(A>B) return 1; return 0;};
+      const diffDays=(aISO,bISO)=> Math.round((parseISO(aISO)-parseISO(bISO))/86400000);
       const schoolYearEndISO=(date)=>{
-        const y=date.getFullYear(); const m=date.getMonth();
-        const endYear=(m>=8? y+1:y); // září→červen následující rok
-        return new Date(endYear,5,30).toISOString().slice(0,10); // 30. 6.
+        const y=date.getFullYear(), m=date.getMonth();
+        const endYear=(m>=8?y+1:y);
+        return new Date(endYear,5,30).toISOString().slice(0,10);
       };
-      const PERIODS = ["0","1","2","3","4","5","6","7","8"];
-      const Badge=({children,className=''})=> <span className={`inline-block text-[10px] px-1.5 py-0.5 rounded ${className}`}>{children}</span>;
-      const CELLCLS = {
-        free : 'bg-green-100 border border-green-400',
-        single: 'bg-red-100 border border-red-400',
-        recAmber: 'bg-amber-100 border border-amber-400',
-        recBlue : 'bg-blue-100 border border-blue-400',
-      };
+      const PERIODS=["0","1","2","3","4","5","6","7","8"];
+      const Badge=({children,className=''})=><span className={`inline-block text-[10px] px-1.5 py-0.5 rounded ${className}`}>{children}</span>;
+      const CELLCLS={free:'bg-green-100 border border-green-400',single:'bg-red-100 border border-red-400',recAmber:'bg-amber-100 border border-amber-400',recBlue:'bg-blue-100 border border-blue-400'};
 
-      // Pomocník: odstraní undefined klíče, aby Firestore neprotestoval
-      const pruneUndefined = (obj) => {
-        const out = {};
-        Object.entries(obj || {}).forEach(([k,v])=>{
-          if (v !== undefined) out[k]=v;
-        });
-        return out;
-      };
-
-      /****************************************************
-       * Firebase init – vložen tvůj projekt
-       ****************************************************/
+      // ---------- Firebase init (tvůj config) ----------
       const firebaseConfig = {
         apiKey: "AIzaSyCJHjEVG_BCjTnHDSQ07Bym-XGAs1k_fXw",
         authDomain: "rezervace-e7631.firebaseapp.com",
@@ -74,25 +56,13 @@
         messagingSenderId: "331678302051",
         appId: "1:331678302051:web:6662a934039c9667629d56"
       };
-
-      if (!firebaseConfig.apiKey) {
-        document.body.innerHTML = '<div style="padding:24px;font-family:ui-sans-serif,system-ui">\
-          <h1 style="font-size:20px;font-weight:700;margin:0 0 8px">Firebase není nastavený</h1>\
-          <p style="margin:0 0 8px">V souboru <code>index.html</code> doplňte objekt <code>firebaseConfig</code> údaji z Firebase konzole.</p>\
-          <p style="margin:0">Poté stránku načtěte znovu.</p>\
-        </div>';
-        throw new Error('Firebase config missing');
-      }
-
       const app = firebase.initializeApp(firebaseConfig);
       const auth = firebase.auth();
       const db   = firebase.firestore();
 
-      /****************************************************
-       * Dialogy – Datum, Místnost, Rezervace
-       ****************************************************/
-      function DateModal({open,valueISO,onClose,onChange}) {
-        if (!open) return null;
+      // ---------- Dialogy ----------
+      function DateModal({open,valueISO,onClose,onChange}){
+        if(!open) return null;
         return (
           <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
             <div className="bg-white rounded-2xl shadow-xl w-full max-w-sm p-4 max-h-[90vh] overflow-y-auto">
@@ -100,27 +70,22 @@
                 <h3 className="text-lg font-semibold">Vyber datum</h3>
                 <button onClick={onClose} className="p-2 rounded-full hover:bg-gray-100">✕</button>
               </div>
-              <input type="date" className="w-full border rounded-xl px-3 py-2" value={valueISO} onChange={(e)=>onChange(e.target.value)}/>
-              <div className="flex justify-end mt-3">
-                <button onClick={onClose} className="px-3 py-2 rounded-xl border">Hotovo</button>
-              </div>
+              <input type="date" className="w-full border rounded-xl px-3 py-2" value={valueISO} onChange={e=>onChange(e.target.value)}/>
+              <div className="flex justify-end mt-3"><button onClick={onClose} className="px-3 py-2 rounded-xl border">Hotovo</button></div>
             </div>
           </div>
         );
       }
 
-      function RoomDialog({open,initial,onClose,onSave}) {
+      function RoomDialog({open,initial,onClose,onSave}){
         const [name,setName]=useState(""),[floor,setFloor]=useState(""),[code,setCode]=useState(""),
               [type,setType]=useState("room"),[max,setMax]=useState(1);
         useEffect(()=>{ if(open){ setName(initial?.name||""); setFloor(initial?.floor||""); setCode(initial?.code||""); setType(initial?.type||"room"); setMax(initial?.max||1);} },[open,initial]);
         if(!open) return null; const isEquip=type==="equipment";
-        return(
+        return (
           <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
             <div className="bg-white rounded-2xl shadow-xl w-full max-w-md p-4 max-h-[90vh] overflow-y-auto">
-              <div className="flex items-center justify-between mb-3">
-                <h3 className="text-lg font-semibold">{initial?"Upravit místnost":"Nová místnost"}</h3>
-                <button onClick={onClose} className="p-2 rounded-full hover:bg-gray-100">✕</button>
-              </div>
+              <div className="flex items-center justify-between mb-3"><h3 className="text-lg font-semibold">{initial?"Upravit místnost":"Nová místnost"}</h3><button onClick={onClose} className="p-2 rounded-full hover:bg-gray-100">✕</button></div>
               <div className="grid grid-cols-6 gap-2">
                 <input className="col-span-3 border rounded-xl px-3 py-2" placeholder="Název" value={name} onChange={e=>setName(e.target.value)}/>
                 <input className="col-span-2 border rounded-xl px-3 py-2" placeholder="Patro" value={floor} onChange={e=>setFloor(e.target.value)}/>
@@ -129,14 +94,14 @@
                   <option value="room">Učebna</option>
                   <option value="equipment">Pomůcka</option>
                 </select>
-                <input className="col-span-3 border rounded-xl px-3 py-2" type="number" min="1" placeholder="Max. kusů" value={max} onChange={e=>setMax(Number(e.target.value))} disabled={!isEquip}/>
+                <input className="col-span-3 border rounded-xl px-3 py-2" type="number" min="1" placeholder="Max. kusů" value={max} onChange={e=>setMax(Number(e.target.value)||1)} disabled={!isEquip}/>
               </div>
               <div className="flex justify-end gap-2 mt-4">
                 <button onClick={onClose} className="px-3 py-2 rounded-xl border">Zrušit</button>
                 <button
                   onClick={()=>{
-                    const payload = { name, floor, code, type };
-                    if (type === 'equipment') payload.max = Number(max);
+                    const payload={ name: name.trim(), floor: floor.trim(), code: code.trim(), type };
+                    if(type==="equipment"){ payload.max = Math.max(1, Number(max)||1); }
                     onSave(payload);
                   }}
                   className="px-3 py-2 rounded-xl bg-black text-white"
@@ -147,23 +112,23 @@
         );
       }
 
-      function ReservationDialog({open,onClose,onSave,teachers,initial,room,editingRecurring}) {
+      function ReservationDialog({open,onClose,onSave,teachers,initial,room,editingRecurring}){
         const [teacherId,setTeacherId]=useState(initial?.teacherId||teachers[0]?.id||"");
-        const defaultPieces = room?.type === "equipment" ? (room?.max || 1) : 1;
+        const defaultPieces = room?.type==="equipment" ? (room?.max||1) : 1;
         const [pieces,setPieces]=useState(initial?.pieces ?? defaultPieces);
         const [note,setNote]=useState(initial?.note||"");
 
-        const isRoom = room?.type === "room";
-        const [repeatOn, setRepeatOn] = useState(!!editingRecurring);
-        const [repeatMode, setRepeatMode] = useState(editingRecurring?.mode || 'until'); // 'until' | 'weeks'
-        const [repeatWeeks, setRepeatWeeks] = useState(editingRecurring?.weeks || 4);
-        const [allowElsewhere, setAllowElsewhere] = useState(!!editingRecurring?.allowElsewhere && isRoom);
+        const isRoom = room?.type==="room";
+        const [repeatOn,setRepeatOn]=useState(!!editingRecurring);
+        const [repeatMode,setRepeatMode]=useState(editingRecurring?.mode||'until'); // 'until' | 'weeks'
+        const [repeatWeeks,setRepeatWeeks]=useState(editingRecurring?.weeks||4);
+        const [allowElsewhere,setAllowElsewhere]=useState(!!editingRecurring?.allowElsewhere && isRoom);
 
-        useEffect(()=>{ if(open){ setPieces(initial?.pieces ?? defaultPieces); setRepeatOn(!!editingRecurring); setRepeatMode(editingRecurring?.mode || 'until'); setRepeatWeeks(editingRecurring?.weeks || 4); setAllowElsewhere(!!editingRecurring?.allowElsewhere && isRoom); } },[open,initial,room,editingRecurring]);
+        useEffect(()=>{ if(open){ setPieces(initial?.pieces ?? defaultPieces); setRepeatOn(!!editingRecurring); setRepeatMode(editingRecurring?.mode||'until'); setRepeatWeeks(editingRecurring?.weeks||4); setAllowElsewhere(!!editingRecurring?.allowElsewhere && isRoom);} },[open,initial,room,editingRecurring]);
 
         if(!open) return null;
         const isEquip = room?.type==="equipment";
-        const maxPieces=Math.max(1,room?.max||1);
+        const maxPieces = Math.max(1, room?.max||1);
 
         return (
           <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30">
@@ -181,10 +146,8 @@
 
               {isEquip && (
                 <div className="mb-2">
-                  <div className="flex justify-between text-xs text-gray-600">
-                    <span>Počet kusů</span><span>{pieces} / {maxPieces}</span>
-                  </div>
-                  <input type="range" min="1" max={maxPieces} value={pieces} onChange={(e)=>setPieces(Number(e.target.value))} className="w-full"/>
+                  <div className="flex justify-between text-xs text-gray-600"><span>Počet kusů</span><span>{pieces} / {maxPieces}</span></div>
+                  <input type="range" min="1" max={maxPieces} value={pieces} onChange={e=>setPieces(Number(e.target.value))} className="w-full"/>
                 </div>
               )}
 
@@ -213,7 +176,7 @@
                       <label className="text-sm block">
                         <span className="block mb-1">Počet týdnů</span>
                         <input type="number" min="1" max="40" className="w-full border rounded-xl px-3 py-2"
-                          value={repeatWeeks} onChange={(e)=>setRepeatWeeks(Math.max(1,Math.min(40,Number(e.target.value)||1)))} />
+                               value={repeatWeeks} onChange={(e)=>setRepeatWeeks(Math.max(1,Math.min(40,Number(e.target.value)||1)))} />
                       </label>
                     )}
 
@@ -257,191 +220,165 @@
         );
       }
 
-      /****************************************************
-       * App – online režim s Firestore a rolemi
-       ****************************************************/
+      // ---------- App ----------
       function App(){
         const [selectedDate,setSelectedDate]=useState(new Date());
-        const selectedIso = toISO(selectedDate);
+        const selectedIso=toISO(selectedDate);
 
-        // Auth & role
-        const [authUser,setAuthUser]=useState(null);  // Firebase user
-        const [me,setMe]=useState(null);              // /users/{uid}
+        // auth & role
+        const [authUser,setAuthUser]=useState(null);
+        const [me,setMe]=useState(null);
         const [loadingAuth,setLoadingAuth]=useState(true);
         const [waitingApproval,setWaitingApproval]=useState(false);
 
-        // Data
+        // data
         const [rooms,setRooms]=useState([]);
-        const [teachers,setTeachers]=useState([]); // schválení uživatelé -> jména
-        const [reservations,setReservations]=useState({}); // map roomId -> { period -> cell }
+        const [teachers,setTeachers]=useState([]);
+        const [reservations,setReservations]=useState({});
         const [recurring,setRecurring]=useState([]);
-        const [allUsers,setAllUsers]=useState([]); // pro admin UI
-        const [allowlistEmails, setAllowlistEmails] = useState([]); // předschválení (jen admin UI)
-
+        const [allUsers,setAllUsers]=useState([]);
         const [showSettings,setShowSettings]=useState(false);
         const [dateModal,setDateModal]=useState(false);
         const [editingRoom,setEditingRoom]=useState(null);
         const [creatingRoom,setCreatingRoom]=useState(false);
-        const [dialog,setDialog]=useState(null); // {dateIso,roomId,period,initial?, editingRecurringId?}
+        const [dialog,setDialog]=useState(null);
 
-        // DnD pro místnosti – jen UI pořadí (nepersistuje)
-        const [dragRoomId, setDragRoomId] = useState(null);
-        const [isDraggingRoom, setIsDraggingRoom] = useState(false);
+        // DnD – nepersistujeme pořadí (jen UI)
+        const [dragRoomId,setDragRoomId]=useState(null);
+        const [isDraggingRoom,setIsDraggingRoom]=useState(false);
 
-        // ===== AUTH (bootstrap bez prvotního readu) =====
+        // --- HOOKY, které musí být PŘED jakýmkoli returnem ---
+        const workweek = useMemo(()=>{
+          const start = startOfWeek(selectedDate);
+          return [0,1,2,3,4].map(off=>addDays(start,off));
+        },[selectedDate]);
+
+        // auth listener
         useEffect(()=>{
           const unsub = auth.onAuthStateChanged(async (u)=>{
             setAuthUser(u);
             if(!u){ setMe(null); setWaitingApproval(false); setLoadingAuth(false); return; }
 
-            const ref = db.collection('users').doc(u.uid);
-            const bootstrapAdmin = (u.email === 'dgunka@gymnaziumbma.cz');
+            const ref=db.collection('users').doc(u.uid);
+            const snap=await ref.get();
+            const isBootstrapAdmin = (u.email==='dgunka@gymnaziumbma.cz');
 
-            // allowlist (jen zjistit existenci)
-            let isPreapproved = false;
-            try {
-              const allow = await db.collection('allowlist').doc((u.email || '').toLowerCase()).get();
-              isPreapproved = allow.exists;
-            } catch (e) {
-              console.warn('allowlist read failed', e);
+            if(!snap.exists){
+              // předschválení podle allowlistu
+              let preapproved=false;
+              try{
+                const allowSnap = await db.collection('allowlist').doc((u.email||'').toLowerCase()).get();
+                preapproved = allowSnap.exists;
+              }catch{}
+
+              await ref.set({
+                email: u.email || '',
+                displayName: u.displayName || (u.email?u.email.split('@')[0]:'Uživatel'),
+                isAdmin: isBootstrapAdmin,
+                approved: isBootstrapAdmin || preapproved,
+                createdAt: firebase.firestore.FieldValue.serverTimestamp()
+              },{merge:true});
+            }else if(isBootstrapAdmin){
+              await ref.set({isAdmin:true, approved:true},{merge:true});
             }
 
-            // NEJDŘÍV ZAPIŠ (merge) – bez undefined
-            const base = pruneUndefined({
-              email: u.email || '',
-              displayName: u.displayName || (u.email ? u.email.split('@')[0] : 'Uživatel'),
-              isAdmin: bootstrapAdmin ? true : undefined,
-              approved: bootstrapAdmin ? true : (isPreapproved ? true : undefined),
-              createdAt: firebase.firestore.FieldValue.serverTimestamp(),
-            });
-            await ref.set(base, { merge: true });
-
-            // PAK ČTI
-            let snap = await ref.get();
-            let data = snap.data() || {};
-
-            // jistota pro bootstrap admina
-            if (bootstrapAdmin && (!data.isAdmin || !data.approved)) {
-              await ref.set({ isAdmin: true, approved: true }, { merge: true });
-              snap = await ref.get();
-              data = snap.data() || {};
-            }
-
+            const snap2=await ref.get();
+            const data=snap2.data();
             setMe(data);
             setWaitingApproval(!data.approved);
             setLoadingAuth(false);
           });
-          return () => unsub && unsub();
+          return ()=>unsub&&unsub();
         },[]);
 
-        // Uživatelé (učitelé = approved users)
+        // users -> teachers
         useEffect(()=>{
           if(!authUser || !me || waitingApproval) return;
-          const unsubUsers = db.collection('users').onSnapshot((q)=>{
-            const list = q.docs.map(d=>({id:d.id, ...d.data()}));
+          const unsub = db.collection('users').onSnapshot(q=>{
+            const list=q.docs.map(d=>({id:d.id,...d.data()}));
             setAllUsers(list);
-            const allowed = list.filter(u=>u.approved);
-            setTeachers(allowed.map(u=>({id:u.id, name: u.displayName || u.email})));
-          }, err => console.error('users snapshot error', err));
-          return () => unsubUsers && unsubUsers();
+            const allowed=list.filter(u=>u.approved);
+            setTeachers(allowed.map(u=>({id:u.id, name:u.displayName||u.email})));
+          });
+          return ()=>unsub&&unsub();
         },[!!authUser, !!me, waitingApproval]);
 
-        // Allowlist – jen pro admin UI
-        useEffect(()=>{
-          if(!authUser || !me || waitingApproval || !me.isAdmin) return;
-          const unsub = db.collection('allowlist').onSnapshot(q=>{
-            setAllowlistEmails(q.docs.map(d=>d.id));
-          }, err => console.error('allowlist snapshot error', err));
-          return () => unsub && unsub();
-        },[!!authUser, !!me, waitingApproval, !!me?.isAdmin]);
-
-        // Rooms
+        // rooms
         useEffect(()=>{
           if(!authUser || !me || waitingApproval) return;
           const unsub = db.collection('rooms').orderBy('name','asc').onSnapshot(q=>{
             setRooms(q.docs.map(d=>({id:d.id,...d.data()})));
-          }, err => console.error('rooms snapshot error', err));
-          return () => unsub && unsub();
+          });
+          return ()=>unsub&&unsub();
         },[!!authUser, !!me, waitingApproval]);
 
-        // Reservations pro vybraný den
+        // reservations for selectedIso
         useEffect(()=>{
           if(!authUser || !me || waitingApproval) return;
           const unsub = db.collection('reservations').where('dateISO','==',selectedIso).onSnapshot(q=>{
-            const dayMap = {};
+            const dayMap={};
             q.docs.forEach(d=>{
-              const r = d.data();
-              dayMap[r.roomId] ??= {};
-              dayMap[r.roomId][r.period] = { teacherId:r.teacherId, pieces:r.pieces, note:r.note, createdBy:r.createdBy };
+              const r=d.data();
+              dayMap[r.roomId]??={};
+              dayMap[r.roomId][r.period]={teacherId:r.teacherId,pieces:r.pieces,note:r.note,createdBy:r.createdBy};
             });
             setReservations(dayMap);
-          }, err => console.error('reservations snapshot error', err));
-          return () => unsub && unsub();
+          });
+          return ()=>unsub&&unsub();
         },[!!authUser, !!me, waitingApproval, selectedIso]);
 
-        // Recurring (celé; filtrujeme na klientu)
+        // recurring
         useEffect(()=>{
           if(!authUser || !me || waitingApproval) return;
           const unsub = db.collection('recurring').onSnapshot(q=>{
-            setRecurring(q.docs.map(d=>({id:d.id, ...d.data()})));
-          }, err => console.error('recurring snapshot error', err));
-          return () => unsub && unsub();
+            setRecurring(q.docs.map(d=>({id:d.id,...d.data()})));
+          });
+          return ()=>unsub&&unsub();
         },[!!authUser, !!me, waitingApproval]);
 
-        // ===== occursOn =====
+        // occursOn
         function occursOn(dateISO, rec){
-          if (cmpISO(dateISO, rec.startISO) < 0) return false;
+          if(cmpISO(dateISO, rec.startISO) < 0) return false;
           const days = diffDays(dateISO, rec.startISO);
-          if (days % 7 !== 0) return false;
-          if (rec.mode === 'weeks' && typeof rec.weeks === 'number'){
-            const weekIndex = Math.floor(days / 7);
-            return weekIndex >= 0 && weekIndex < rec.weeks;
+          if(days % 7 !== 0) return false;
+          if(rec.mode==='weeks' && typeof rec.weeks==='number'){
+            const weekIndex=Math.floor(days/7);
+            return weekIndex>=0 && weekIndex<rec.weeks;
           }
-          if (rec.endISO && cmpISO(dateISO, rec.endISO) > 0) return false;
+          if(rec.endISO && cmpISO(dateISO, rec.endISO)>0) return false;
           return true;
         }
 
-        // ===== Effective plan =====
+        // effective plan
         const effectivePlan = useMemo(()=>{
-          const plan = JSON.parse(JSON.stringify(reservations || {}));
-          (recurring || []).forEach(r=>{
-            if(!occursOn(selectedIso, r)) return;
-            plan[r.roomId] ??= {};
+          const plan = JSON.parse(JSON.stringify(reservations||{}));
+          (recurring||[]).forEach(r=>{
+            if(!occursOn(selectedIso,r)) return;
+            plan[r.roomId]??={};
             if(!plan[r.roomId][r.period]){
               plan[r.roomId][r.period] = {
-                teacherId: r.teacherId,
-                pieces: r.pieces,
-                note: r.note,
-                recurringId: r.id,
-                allowElsewhere: !!r.allowElsewhere,
-                createdBy: r.createdBy,
+                teacherId:r.teacherId,pieces:r.pieces,note:r.note,
+                recurringId:r.id, allowElsewhere:!!r.allowElsewhere, createdBy:r.createdBy
               };
             }
           });
           return plan;
-        }, [reservations, recurring, selectedIso]);
+        },[reservations,recurring,selectedIso]);
 
-        // ===== Týdenní panel – přehled dne =====
-        function daySummary(date){
-          const iso = toISO(date), items=[];
-          (recurring||[]).forEach(r=>{
-            if(!occursOn(iso, r)) return;
-            items.push({period:r.period, code:(rooms.find(x=>x.id===r.roomId)?.code||"?"), kind: r.allowElsewhere ? 'rec-blue' : 'rec-amber'});
-          });
-          items.sort((a,b)=> Number(a.period)-Number(b.period) || a.code.localeCompare(b.code));
-          return items;
-        }
-
-        // ===== CRUD – rooms (admin) =====
-        const addRoom = async (payload)=> {
-          await db.collection('rooms').add(pruneUndefined(payload));
+        // CRUD rooms
+        const addRoom = async payload=>{
+          const body={ name:payload.name, floor:payload.floor, code:payload.code, type:payload.type };
+          if(payload.type==='equipment'){ body.max = Math.max(1, Number(payload.max)||1); }
+          await db.collection('rooms').add(body);
         };
-        const updateRoom = async (id, patch)=> {
-          await db.collection('rooms').doc(id).set(pruneUndefined(patch), {merge:true});
+        const updateRoom = async (id,patch)=>{
+          const body={...patch};
+          if(patch.type!=='equipment'){ delete body.max; }
+          await db.collection('rooms').doc(id).set(body,{merge:true});
         };
-        const removeRoom = async (id)=> await db.collection('rooms').doc(id).delete();
+        const removeRoom = async id => { await db.collection('rooms').doc(id).delete(); };
 
-        // ===== CRUD – reservations/recurring =====
+        // CRUD reservations/recurring
         async function upsertReservation(dateIso, roomId, period, payload, editingRecurringId=null){
           const userId = authUser?.uid || 'unknown';
 
@@ -450,96 +387,85 @@
             const seriesStartISO = (origSnap && origSnap.exists) ? origSnap.data().startISO : dateIso;
 
             if(payload.repeat){
-              // Smazat případný single-slot v den startu (aby se nedubloval s opakováním)
-              const daySnap = await db.collection('reservations')
-                .where('dateISO','==', dateIso)
-                .where('roomId','==', roomId)
-                .where('period','==', period)
-                .get();
-              daySnap.forEach(d=> d.ref.delete());
+              // smazat případný single v den startu
+              const q = await db.collection('reservations')
+                .where('dateISO','==',dateIso).where('roomId','==',roomId).where('period','==',period).get();
+              q.forEach(d=>d.ref.delete());
 
-              const recBase = {
-                roomId, period,
-                teacherId: payload.teacherId,
-                pieces: payload.pieces,
-                note: payload.note,
-                startISO: seriesStartISO,
-                createdBy: userId,
-                updatedAt: firebase.firestore.FieldValue.serverTimestamp(),
+              const rec={
+                roomId, period, teacherId: payload.teacherId, note: payload.note||'',
+                startISO: seriesStartISO, createdBy: userId,
+                updatedAt: firebase.firestore.FieldValue.serverTimestamp()
               };
-              // allowElsewhere ukládáme jen u místností
-              if (payload.repeat?.allowElsewhere === true) recBase.allowElsewhere = true;
-
+              if(typeof payload.pieces==='number'){ rec.pieces = payload.pieces; }
               if(payload.repeat.mode==='until'){
-                recBase.mode='until';
-                recBase.endISO=schoolYearEndISO(parseISO(seriesStartISO));
-              } else {
-                const w = Math.max(1, Number(payload.repeat.weeks)||1);
-                recBase.mode='weeks';
-                recBase.weeks=w;
-                recBase.endISO = toISO(addWeeks(parseISO(seriesStartISO), w-1));
+                rec.mode='until';
+                rec.endISO = schoolYearEndISO(parseISO(seriesStartISO));
+                // allowElsewhere nastavíme jen pokud je definováno
+                if(typeof payload.repeat.allowElsewhere !== 'undefined'){
+                  rec.allowElsewhere = !!payload.repeat.allowElsewhere;
+                }
+              }else{
+                const w=Math.max(1,Number(payload.repeat.weeks)||1);
+                rec.mode='weeks'; rec.weeks=w;
+                rec.endISO = toISO(addWeeks(parseISO(seriesStartISO), w-1));
+                if(typeof payload.repeat.allowElsewhere !== 'undefined'){
+                  rec.allowElsewhere = !!payload.repeat.allowElsewhere;
+                }
               }
 
               if(editingRecurringId){
-                await db.collection('recurring').doc(editingRecurringId).set(pruneUndefined(recBase), {merge:true});
-              } else {
-                recBase.createdAt = firebase.firestore.FieldValue.serverTimestamp();
-                await db.collection('recurring').add(pruneUndefined(recBase));
+                await db.collection('recurring').doc(editingRecurringId).set(rec,{merge:true});
+              }else{
+                rec.createdAt = firebase.firestore.FieldValue.serverTimestamp();
+                await db.collection('recurring').add(rec);
               }
-            } else {
-              // vypnuto opakování → smazat sérii, uložit single
-              if(editingRecurringId){
-                await db.collection('recurring').doc(editingRecurringId).delete();
-              }
-              const single = pruneUndefined({
-                dateISO: dateIso, roomId, period,
-                teacherId: payload.teacherId, pieces: payload.pieces, note: payload.note,
-                createdBy: userId, createdAt: firebase.firestore.FieldValue.serverTimestamp(),
-              });
+            }else{
+              // vypnuto opakování -> smazat sérii a uložit single
+              if(editingRecurringId){ await db.collection('recurring').doc(editingRecurringId).delete(); }
+              const single={
+                dateISO:dateIso, roomId, period,
+                teacherId: payload.teacherId, note: payload.note||'',
+                createdBy: userId, createdAt: firebase.firestore.FieldValue.serverTimestamp()
+              };
+              if(typeof payload.pieces==='number'){ single.pieces = payload.pieces; }
               await db.collection('reservations').add(single);
             }
-          } else {
-            // Jednorázová rezervace
-            const single = pruneUndefined({
-              dateISO: dateIso, roomId, period,
-              teacherId: payload.teacherId, pieces: payload.pieces, note: payload.note,
-              createdBy: userId, createdAt: firebase.firestore.FieldValue.serverTimestamp(),
-            });
+          }else{
+            const single={
+              dateISO:dateIso, roomId, period,
+              teacherId: payload.teacherId, note: payload.note||'',
+              createdBy: userId, createdAt: firebase.firestore.FieldValue.serverTimestamp()
+            };
+            if(typeof payload.pieces==='number'){ single.pieces = payload.pieces; }
             await db.collection('reservations').add(single);
           }
         }
 
         async function clearReservation(dateIso,roomId,period){
-          const q = await db.collection('reservations')
-            .where('dateISO','==', dateIso)
-            .where('roomId','==', roomId)
-            .where('period','==', period)
-            .get();
+          const q = await db.collection('reservations').where('dateISO','==',dateIso).where('roomId','==',roomId).where('period','==',period).get();
           for(const d of q.docs) await d.ref.delete();
         }
-        async function stopRecurring(id){
-          await db.collection('recurring').doc(id).delete();
-        }
+        async function stopRecurring(id){ await db.collection('recurring').doc(id).delete(); }
 
-        // ===== UI hlavička (login/out) =====
         const canUseApp = !!authUser && !!me && me.approved;
         const isAdmin = !!me?.isAdmin;
 
-        const openCell = (room, period)=>{
-          const cell = effectivePlan?.[room.id]?.[period];
+        const openCell=(room,period)=>{
+          const cell=effectivePlan?.[room.id]?.[period];
           if(cell){
             if(cell.recurringId){
-              const rec = recurring.find(r=>r.id===cell.recurringId);
-              setDialog({dateIso:selectedIso, roomId:room.id, period, initial:cell, editingRecurringId: rec?.id});
-            } else {
+              const rec=recurring.find(r=>r.id===cell.recurringId);
+              setDialog({dateIso:selectedIso, roomId:room.id, period, initial:cell, editingRecurringId:rec?.id});
+            }else{
               setDialog({dateIso:selectedIso, roomId:room.id, period, initial:cell});
             }
-          } else {
+          }else{
             setDialog({dateIso:selectedIso, roomId:room.id, period});
           }
         };
 
-        // ===== AUTH stavy =====
+        // ---------- UI stavy ----------
         if(loadingAuth){
           return <div className="max-w-3xl mx-auto p-8">Načítám přihlášení…</div>;
         }
@@ -549,10 +475,7 @@
               <div className="bg-white/80 rounded-2xl shadow p-6 max-w-md w-full">
                 <h1 className="text-2xl font-bold mb-4">Rezervace Chromebooků a učeben</h1>
                 <p className="mb-4 text-gray-700">Pro pokračování se přihlas svým Google účtem.</p>
-                <button
-                  className="px-4 py-2 rounded-xl bg-black text-white w-full"
-                  onClick={()=> auth.signInWithPopup(new firebase.auth.GoogleAuthProvider())}
-                >Přihlásit se Googlem</button>
+                <button className="px-4 py-2 rounded-xl bg-black text-white w-full" onClick={()=>auth.signInWithPopup(new firebase.auth.GoogleAuthProvider())}>Přihlásit se Googlem</button>
               </div>
             </div>
           );
@@ -564,26 +487,15 @@
                 <h1 className="text-2xl font-bold mb-2">Účet čeká na schválení</h1>
                 <p className="text-gray-700">Tento účet zatím není schválený administrátorem.</p>
                 <div className="mt-4 text-sm text-gray-600">Přihlášen: {authUser.email}</div>
-                <div className="mt-6 flex gap-2">
-                  <button className="px-3 py-2 rounded-xl border" onClick={()=>auth.signOut()}>Odhlásit</button>
-                </div>
+                <div className="mt-6"><button className="px-3 py-2 rounded-xl border" onClick={()=>auth.signOut()}>Odhlásit</button></div>
               </div>
             </div>
           );
         }
 
-        // ===== WORKWEEK =====
-        const workweek = useMemo(()=>{
-          const start = startOfWeek(selectedDate);
-          return [0,1,2,3,4].map(off=>addDays(start,off));
-        }, [selectedDate]);
-
-        /*********************
-         * Render APP
-         *********************/
+        // ---------- Render hlavní aplikace ----------
         return (
           <div className="p-4 max-w-7xl mx-auto grid gap-4">
-            {/* horní lišta */}
             <header className="flex items-center justify-between">
               <h1 className="text-2xl font-bold">Rezervace Chromebooků a učeben</h1>
               <div className="flex items-center gap-2">
@@ -595,25 +507,28 @@
               </div>
             </header>
 
-            {/* modal datum */}
             <DateModal open={dateModal} valueISO={toISO(selectedDate)} onClose={()=>setDateModal(false)} onChange={(v)=>v&&setSelectedDate(parseISO(v))}/>
 
-            {/* pracovní týden – mobilní horizontální scroll */}
             <section className="bg-white/80 rounded-2xl p-4">
               <div className="hidden sm:grid grid-cols-5 text-center text-xs font-medium text-gray-600 mb-2">{["Po","Út","St","Čt","Pá"].map((n,i)=><div key={i} className="py-1">{n}</div>)}</div>
               <div className="sm:grid sm:grid-cols-5 gap-2 flex overflow-x-auto -mx-2 px-2">
                 {workweek.map(d=>{
-                  const sel=isSameDay(d,selectedDate), items=daySummary(d);
-                  return(
+                  const sel=isSameDay(d,selectedDate);
+                  // náhled přes recurring jen (rychlé)
+                  const items=(recurring||[]).filter(r=>occursOn(toISO(d),r)).map(r=>({
+                    period:r.period,
+                    code:(rooms.find(x=>x.id===r.roomId)?.code||"?"),
+                    kind:r.allowElsewhere?'rec-blue':'rec-amber'
+                  })).sort((a,b)=>Number(a.period)-Number(b.period)||a.code.localeCompare(b.code));
+                  return (
                     <button key={d.toISOString()} onClick={()=>setSelectedDate(d)} className={`sm:h-28 h-24 sm:w-auto w-40 shrink-0 rounded-2xl border p-2 text-left bg-white hover:shadow ${sel?'ring-2 ring-fuchsia-400':''}`}>
                       <div className="text-sm font-semibold">{shortDateCz(d)}</div>
                       <div className="mt-1 flex flex-wrap gap-1">
-                        {items.length===0?<Badge className="bg-green-100 border border-green-400 text-green-800">volno</Badge>:
-                          items.map((it,idx)=>{
-                            const cls = it.kind==='rec-blue' ? "bg-blue-100 border border-blue-400 text-blue-800"
-                                      : "bg-amber-100 border border-amber-400 text-amber-900";
-                            return <Badge key={idx} className={cls}>{it.period}. {it.code}</Badge>;
-                          })
+                        {items.length===0 ? <Badge className="bg-green-100 border border-green-400 text-green-800">volno</Badge>
+                          : items.map((it,idx)=>{
+                              const cls = it.kind==='rec-blue' ? "bg-blue-100 border border-blue-400 text-blue-800" : "bg-amber-100 border border-amber-400 text-amber-900";
+                              return <Badge key={idx} className={cls}>{it.period}. {it.code}</Badge>;
+                            })
                         }
                       </div>
                     </button>
@@ -622,7 +537,6 @@
               </div>
             </section>
 
-            {/* denní plán */}
             <section className="bg-white/80 rounded-2xl p-4">
               <h2 className="text-lg font-semibold mb-2">{fullDateCz(selectedDate)}</h2>
               <div className="-mx-2 sm:mx-0 overflow-x-auto">
@@ -639,22 +553,19 @@
                             </div>
                           </th>
                           {PERIODS.map(p=>{
-                            const cell = effectivePlan?.[room.id]?.[p];
+                            const cell=effectivePlan?.[room.id]?.[p];
                             const isRecurring=!!cell?.recurringId;
                             const recurringBlue = isRecurring && cell?.allowElsewhere;
-                            const cls = !cell ? CELLCLS.free
-                                      : isRecurring ? (recurringBlue ? CELLCLS.recBlue : CELLCLS.recAmber)
-                                      : CELLCLS.single;
-                            // práva: admin vždy; jinak pouze autor single rezervace
+                            const cls = !cell ? CELLCLS.free : isRecurring ? (recurringBlue?CELLCLS.recBlue:CELLCLS.recAmber) : CELLCLS.single;
                             const canDelete = isAdmin || (cell?.createdBy && authUser?.uid && cell.createdBy===authUser.uid);
                             return (
                               <td key={p} className="align-top p-1">
-                                <div className={`rounded-xl p-2 min-h-16 ${cls}`} onClick={()=>openCell(room, p)}>
-                                  {cell?(
+                                <div className={`rounded-xl p-2 min-h-16 ${cls}`} onClick={()=>openCell(room,p)}>
+                                  {cell ? (
                                     <div className="flex flex-col gap-1">
                                       <div className="font-medium flex items-center gap-2">
                                         {(teachers.find(t=>t.id===cell.teacherId)?.name) || '—'}
-                                        {cell.pieces ? <Badge className="bg-white/70 border text-xs">{cell.pieces} ks</Badge> : null}
+                                        {typeof cell.pieces==='number' ? <Badge className="bg-white/70 border text-xs">{cell.pieces} ks</Badge> : null}
                                       </div>
                                       {cell.note && <div className="text-xs">{cell.note}</div>}
                                       <div className="flex gap-2 mt-1">
@@ -678,12 +589,11 @@
               </div>
             </section>
 
-            {/* nastavení */}
             {showSettings && (
               <section className="bg-white/80 rounded-2xl p-4 grid grid-cols-1 lg:grid-cols-3 gap-4">
                 <div>
                   <h2 className="text-lg font-semibold mb-2">Učitelé</h2>
-                  <div className="text-sm text-gray-600">Seznam učitelů je odvozen ze schválených uživatelů (viz „Uživatelé“).</div>
+                  <div className="text-sm text-gray-600">Seznam učitelů je odvozen ze schválených uživatelů.</div>
                 </div>
 
                 <div>
@@ -696,26 +606,25 @@
                       <div className="flex flex-col gap-2">
                         {rooms.map(r=>(
                           <div key={r.id}
-                            className="flex items-center justify-between rounded-xl border bg-white/70 px-3 py-2 cursor-move select-none"
-                            draggable
-                            onDragStart={()=>{ setDragRoomId(r.id); setIsDraggingRoom(true); }}
-                            onDragEnd={()=>{ setIsDraggingRoom(false); setDragRoomId(null); }}
-                            onDragOver={(e)=>e.preventDefault()}
-                            onDrop={()=>{
-                              if(!dragRoomId || dragRoomId===r.id) return;
-                              const reorder = (arr, fromId, toId)=>{
-                                const copy=[...arr];
-                                const from = copy.findIndex(x=>x.id===fromId);
-                                const to   = copy.findIndex(x=>x.id===toId);
-                                if(from<0||to<0) return arr;
-                                const [m] = copy.splice(from,1);
-                                copy.splice(to,0,m);
-                                return copy;
-                              };
-                              setRooms(prev=>reorder(prev, dragRoomId, r.id));
-                              setIsDraggingRoom(false); setDragRoomId(null);
-                            }}
-                            onClick={()=>{ if(!isDraggingRoom) setEditingRoom(r); }}
+                               className="flex items-center justify-between rounded-xl border bg-white/70 px-3 py-2 cursor-move select-none"
+                               draggable
+                               onDragStart={()=>{setDragRoomId(r.id); setIsDraggingRoom(true);}}
+                               onDragEnd={()=>{setIsDraggingRoom(false); setDragRoomId(null);}}
+                               onDragOver={(e)=>e.preventDefault()}
+                               onDrop={()=>{
+                                 if(!dragRoomId || dragRoomId===r.id) return;
+                                 setRooms(prev=>{
+                                   const copy=[...prev];
+                                   const from=copy.findIndex(x=>x.id===dragRoomId);
+                                   const to=copy.findIndex(x=>x.id===r.id);
+                                   if(from<0||to<0) return prev;
+                                   const [m]=copy.splice(from,1);
+                                   copy.splice(to,0,m);
+                                   return copy;
+                                 });
+                                 setIsDraggingRoom(false); setDragRoomId(null);
+                               }}
+                               onClick={()=>{ if(!isDraggingRoom) setEditingRoom(r); }}
                           >
                             <div>
                               <div className="font-medium">{r.name}</div>
@@ -725,23 +634,19 @@
                                 <span className="px-1.5 py-0.5 rounded bg-gray-100 border">{r.type==='equipment' ? `pomůcka${r.max?` • max ${r.max}`:''}` : 'učebna'}</span>
                               </div>
                             </div>
-                            <button className="text-red-600 px-2 py-1 rounded-full hover:bg-red-50" title="Odebrat" onClick={(e)=>{ e.stopPropagation(); removeRoom(r.id); }}>✕</button>
+                            <button className="text-red-600 px-2 py-1 rounded-full hover:bg-red-50" title="Odebrat" onClick={(e)=>{e.stopPropagation(); removeRoom(r.id);}}>✕</button>
                           </div>
                         ))}
                       </div>
                     </>
-                  ) : (
-                    <div className="text-sm text-gray-600">Nastavení učeben je dostupné pouze administrátorům.</div>
-                  )}
+                  ) : <div className="text-sm text-gray-600">Nastavení učeben je dostupné pouze administrátorům.</div>}
                 </div>
 
                 <div>
                   <h2 className="text-lg font-semibold mb-2">Uživatelé</h2>
                   {isAdmin ? (
                     <>
-                      <div className="text-xs text-gray-600 mb-2">Schvalování a role. Uživatele přidá app při prvním přihlášení. Předschválení se řídí kolekcí <code>allowlist</code>.</div>
-
-                      {/* seznam skutečných user dokumentů */}
+                      <div className="text-xs text-gray-600 mb-2">Schvalování a role. Uživatele přidá app při prvním přihlášení. Můžeš i „předschválit“ e-mail níže.</div>
                       <div className="space-y-2">
                         {allUsers.map(u=>(
                           <div key={u.id} className="flex items-center justify-between rounded-xl border bg-white px-3 py-2">
@@ -751,11 +656,11 @@
                             </div>
                             <div className="flex items-center gap-2 text-sm">
                               <label className="inline-flex items-center gap-1">
-                                <input type="checkbox" checked={!!u.approved} onChange={async (e)=> await db.collection('users').doc(u.id).set({approved:e.target.checked},{merge:true})}/>
+                                <input type="checkbox" checked={!!u.approved} onChange={async (e)=>await db.collection('users').doc(u.id).set({approved:e.target.checked},{merge:true})}/>
                                 schválen
                               </label>
                               <label className="inline-flex items-center gap-1">
-                                <input type="checkbox" checked={!!u.isAdmin} onChange={async (e)=> await db.collection('users').doc(u.id).set({isAdmin:e.target.checked},{merge:true})}/>
+                                <input type="checkbox" checked={!!u.isAdmin} onChange={async (e)=>await db.collection('users').doc(u.id).set({isAdmin:e.target.checked},{merge:true})}/>
                                 admin
                               </label>
                             </div>
@@ -763,27 +668,16 @@
                         ))}
                       </div>
 
-                      {/* allowlist – předschválení, co se ještě nepřihlásili */}
-                      <div className="mt-6">
-                        <h3 className="font-semibold mb-1">Předschváleni, zatím se nepřihlásili</h3>
-                        {allowlistEmails
-                          .filter(e => !allUsers.some(u => (u.email || '').toLowerCase() === e.toLowerCase()))
-                          .map(e => (
-                            <div key={e} className="rounded border px-3 py-2 bg-red-50 text-sm">
-                              {e} <span className="text-red-700 ml-2">(čeká na první přihlášení)</span>
-                            </div>
-                          ))
-                        }
+                      <div className="mt-4">
+                        <h3 className="font-medium mb-2">Předschválit e-mail</h3>
+                        <AllowlistForm db={db}/>
                       </div>
                     </>
-                  ) : (
-                    <div className="text-sm text-gray-600">Správu uživatelů vidí pouze administrátoři.</div>
-                  )}
+                  ) : <div className="text-sm text-gray-600">Správu uživatelů vidí pouze administrátoři.</div>}
                 </div>
               </section>
             )}
 
-            {/* dialogy */}
             <ReservationDialog
               open={!!dialog}
               onClose={()=>setDialog(null)}
@@ -793,18 +687,29 @@
               editingRecurring={dialog?.editingRecurringId ? recurring.find(r=>r.id===dialog.editingRecurringId) : null}
               onSave={(payload)=> upsertReservation(dialog.dateIso, dialog.roomId, dialog.period, payload, dialog?.editingRecurringId||null)}
             />
-            <RoomDialog
-              open={!!editingRoom}
-              initial={editingRoom}
-              onClose={()=>setEditingRoom(null)}
-              onSave={async (patch)=>{ await updateRoom(editingRoom.id, patch); setEditingRoom(null); }}
-            />
-            <RoomDialog
-              open={creatingRoom}
-              initial={null}
-              onClose={()=>setCreatingRoom(false)}
-              onSave={async (patch)=>{ await addRoom(patch); setCreatingRoom(false); }}
-            />
+            <RoomDialog open={!!editingRoom} initial={editingRoom} onClose={()=>setEditingRoom(null)} onSave={async (patch)=>{await updateRoom(editingRoom.id,patch); setEditingRoom(null);}}/>
+            <RoomDialog open={creatingRoom} initial={null} onClose={()=>setCreatingRoom(false)} onSave={async (patch)=>{await addRoom(patch); setCreatingRoom(false);}}/>
+          </div>
+        );
+      }
+
+      // Allowlist mini-form (jen admin)
+      function AllowlistForm({db}){
+        const [email,setEmail]=useState("");
+        const [saving,setSaving]=useState(false);
+        return (
+          <div className="flex gap-2">
+            <input className="border rounded-xl px-3 py-2 flex-1" placeholder="ucitel@skola.cz" value={email} onChange={e=>setEmail(e.target.value)}/>
+            <button className="px-3 py-2 rounded-xl bg-black text-white" disabled={saving || !email.includes('@')}
+              onClick={async ()=>{
+                const key=email.trim().toLowerCase();
+                if(!key) return;
+                setSaving(true);
+                try{ await db.collection('allowlist').doc(key).set({createdAt: firebase.firestore.FieldValue.serverTimestamp()},{merge:true}); }
+                finally{ setSaving(false); }
+              }}>
+              Přidat
+            </button>
           </div>
         );
       }
