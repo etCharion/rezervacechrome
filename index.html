@@ -143,7 +143,9 @@
 
               <label className="block text-sm mb-2">Učitel/ka
                 <select className="w-full border rounded-xl px-3 py-2 mt-1" value={teacherId} onChange={e=>setTeacherId(e.target.value)}>
-                  {teachers.map(t=><option key={t.id} value={t.id}>{t.name}</option>)}
+                  {teachers.map(t=>
+                    <option key={t.id} value={t.id}>{t.name}</option>
+                  )}
                 </select>
               </label>
 
@@ -575,7 +577,9 @@
               <div className="-mx-2 sm:mx-0 overflow-x-auto">
                 <div className="min-w-[900px]">
                   <table className="w-full text-sm">
-                    <thead><tr><th className="text-left p-2 sticky left-0 bg-white/90 backdrop-blur z-10">Učebna</th>{PERIODS.map(p=><th key={p} className="p-2 min-w-28 text-center">{p}. hod.</th>)}</tr></thead>
+                    <thead><tr><th className="text-left p-2 sticky left-0 bg-white/90 backdrop-blur z-10">Učebna</th>{PERIODS.map(p=>
+                      <th key={p} className="p-2 min-w-28 text-center">{p}. hod.</th>
+                    )}</tr></thead>
                     <tbody>
                       {rooms.map(room=>(
                         <tr key={room.id} className="odd:bg-white/60 even:bg-white/40">
