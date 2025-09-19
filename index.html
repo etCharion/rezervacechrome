@@ -124,7 +124,7 @@
               </div>
               <div className="flex justify-end gap-2 mt-4">
                 <button onClick={onClose} className="px-3 py-2 rounded-xl border">Zrušit</button>
-                {/* DŮLEŽITÁ ÚPRAVA: posíláme max jen u pomůcek */}
+                {/* posíláme max jen u pomůcek */}
                 <button
                   onClick={()=>{
                     const payload = { name, floor, code, type };
@@ -280,6 +280,12 @@
         const [dragRoomId, setDragRoomId] = useState(null);
         const [isDraggingRoom, setIsDraggingRoom] = useState(false);
 
+        // === useMemo, které MUSÍ být před jakýmkoli returnem ===
+        const workweek = useMemo(()=>{
+          const start = startOfWeek(selectedDate);
+          return [0,1,2,3,4].map(off=>addDays(start,off));
+        }, [selectedDate]);
+
         // ===== AUTH =====
         useEffect(()=>{
           const unsub = auth.onAuthStateChanged(async (u)=>{
@@ -389,17 +395,6 @@
           return plan;
         }, [reservations, recurring, selectedIso]);
 
-        // týdenní přehled
-        function daySummary(date){
-          const iso = toISO(date), items=[];
-          (recurring||[]).forEach(r=>{
-            if(!occursOn(iso, r)) return;
-            items.push({period:r.period, code:(rooms.find(x=>x.id===r.roomId)?.code||"?"), kind: r.allowElsewhere ? 'rec-blue' : 'rec-amber'});
-          });
-          items.sort((a,b)=> Number(a.period)-Number(b.period) || a.code.localeCompare(b.code));
-          return items;
-        }
-
         // CRUD rooms
         const addRoom = async (payload)=>{
           const data = {
@@ -495,6 +490,7 @@
         const canUseApp = !!authUser && !!me && me.approved;
         const isAdmin = !!me?.isAdmin;
 
+        // ===== AUTH obrazovky =====
         if(loadingAuth){
           return <div className="max-w-3xl mx-auto p-8">Načítám přihlášení…</div>;
         }
@@ -527,13 +523,12 @@
           );
         }
 
-        const workweek = useMemo(()=>{
-          const start = startOfWeek(selectedDate);
-          return [0,1,2,3,4].map(off=>addDays(start,off));
-        }, [selectedDate]);
-
+        /*********************
+         * Render APP
+         *********************/
         return (
           <div className="p-4 max-w-7xl mx-auto grid gap-4">
+            {/* horní lišta */}
             <header className="flex items-center justify-between">
               <h1 className="text-2xl font-bold">Rezervace Chromebooků a učeben</h1>
               <div className="flex items-center gap-2">
@@ -545,13 +540,17 @@
               </div>
             </header>
 
+            {/* modal datum */}
             <DateModal open={dateModal} valueISO={toISO(selectedDate)} onClose={()=>setDateModal(false)} onChange={(v)=>v&&setSelectedDate(parseISO(v))}/>
 
+            {/* pracovní týden – mobilní horizontální scroll */}
             <section className="bg-white/80 rounded-2xl p-4">
               <div className="hidden sm:grid grid-cols-5 text-center text-xs font-medium text-gray-600 mb-2">{["Po","Út","St","Čt","Pá"].map((n,i)=><div key={i} className="py-1">{n}</div>)}</div>
               <div className="sm:grid sm:grid-cols-5 gap-2 flex overflow-x-auto -mx-2 px-2">
                 {workweek.map(d=>{
-                  const sel=isSameDay(d,selectedDate), items=(()=>{
+                  const sel=isSameDay(d,selectedDate);
+                  // přehled z opakování
+                  const items = (()=> {
                     const iso = toISO(d), arr=[];
                     (recurring||[]).forEach(r=>{
                       if(!occursOn(iso, r)) return;
@@ -578,6 +577,7 @@
               </div>
             </section>
 
+            {/* denní plán */}
             <section className="bg-white/80 rounded-2xl p-4">
               <h2 className="text-lg font-semibold mb-2">{fullDateCz(selectedDate)}</h2>
               <div className="-mx-2 sm:mx-0 overflow-x-auto">
@@ -645,6 +645,7 @@
               </div>
             </section>
 
+            {/* nastavení */}
             {showSettings && (
               <section className="bg-white/80 rounded-2xl p-4 grid grid-cols-1 lg:grid-cols-3 gap-4">
                 <div>
@@ -722,6 +723,7 @@
               </section>
             )}
 
+            {/* dialogy */}
             <ReservationDialog
               open={!!dialog}
               onClose={()=>setDialog(null)}
