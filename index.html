@@ -8,55 +8,42 @@
     <!-- React + ReactDOM (UMD) -->
     <script crossorigin src="https://unpkg.com/react@18/umd/react.development.js"></script>
     <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
-
-    <!-- Babel pro JSX (vývoj) -->
+    <!-- Babel pro JSX -->
     <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
-
-    <!-- Tailwind (vývoj) -->
+    <!-- Tailwind -->
     <script src="https://cdn.tailwindcss.com"></script>
 
-    <!-- Firebase compat UMD -->
+    <!-- Firebase compat (UMD) -->
     <script src="https://www.gstatic.com/firebasejs/9.6.10/firebase-app-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/9.6.10/firebase-auth-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/9.6.10/firebase-firestore-compat.js"></script>
   </head>
-
   <body class="bg-gradient-to-br from-indigo-100 via-fuchsia-100 to-sky-100">
     <div id="root"></div>
 
     <script type="text/babel">
-      /****************************************************
-       * Utilitky
-       ****************************************************/
-      const { useState, useEffect, useMemo } = React;
-
-      const toISO = (d) => new Date(d.getFullYear(), d.getMonth(), d.getDate()).toISOString().slice(0, 10);
-      const parseISO = (s) => { const [y,m,dd]=s.split('-').map(Number); return new Date(y, m-1, dd); };
+      /************* util *************/
+      const {useState,useEffect,useMemo} = React;
+      const toISO = d => new Date(d.getFullYear(),d.getMonth(),d.getDate()).toISOString().slice(0,10);
+      const parseISO = s => { const [y,m,d]=s.split('-').map(Number); return new Date(y,m-1,d); };
       const addDays = (d,n)=>{ const x=new Date(d); x.setDate(x.getDate()+n); return x; };
       const addWeeks=(d,n)=>addDays(d,n*7);
-      const startOfWeek=(d)=>{ const iso=d.getDay()||7; return addDays(new Date(d.getFullYear(),d.getMonth(),d.getDate()),-(iso-1)); };
-      const isSameDay=(a,b)=>a.getFullYear()===b.getFullYear() && a.getMonth()===b.getMonth() && a.getDate()===b.getDate();
-      const fullDateCz=(d)=> d.toLocaleDateString('cs-CZ',{weekday:'long', day:'numeric', month:'long', year:'numeric'});
-      const shortDateCz=(d)=> d.toLocaleDateString('cs-CZ',{day:'numeric', month:'numeric'});
-      const cmpISO=(a,b)=>{ const A=parseISO(a), B=parseISO(b); if(A<B) return -1; if(A>B) return 1; return 0; };
-      const diffDays=(aISO,bISO)=> Math.round((parseISO(aISO) - parseISO(bISO)) / 86400000);
-      const schoolYearEndISO=(date)=>{
-        const y=date.getFullYear(); const m=date.getMonth();
-        const endYear=(m>=8? y+1:y);
-        return new Date(endYear,5,30).toISOString().slice(0,10);
-      };
-      const PERIODS = ["0","1","2","3","4","5","6","7","8"];
-      const Badge=({children,className=''})=> <span className={`inline-block text-[10px] px-1.5 py-0.5 rounded ${className}`}>{children}</span>;
-      const CELLCLS = {
-        free : 'bg-green-100 border border-green-400',
-        single: 'bg-red-100 border border-red-400',
-        recAmber: 'bg-amber-100 border border-amber-400',
-        recBlue : 'bg-blue-100 border border-blue-400',
-      };
+      const startOfWeek=d=>{ const iso=d.getDay()||7; return addDays(new Date(d.getFullYear(),d.getMonth(),d.getDate()),-(iso-1)); };
+      const isSameDay=(a,b)=>a.getFullYear()===b.getFullYear()&&a.getMonth()===b.getMonth()&&a.getDate()===b.getDate();
+      const fullDateCz=d=>d.toLocaleDateString('cs-CZ',{weekday:'long',day:'numeric',month:'long',year:'numeric'});
+      const shortDateCz=d=>d.toLocaleDateString('cs-CZ',{day:'numeric',month:'numeric'});
+      const cmpISO=(a,b)=>{const A=parseISO(a),B=parseISO(b);return A<B?-1:A>B?1:0;};
+      const diffDays=(aISO,bISO)=>Math.round((parseISO(aISO)-parseISO(bISO))/86400000);
+      const schoolYearEndISO=(date)=>{ const y=date.getFullYear(); const m=date.getMonth(); const endYear=(m>=8?y+1:y); return new Date(endYear,5,30).toISOString().slice(0,10); };
+      const PERIODS=["0","1","2","3","4","5","6","7","8"];
+      const Badge=({children,className=''})=><span className={`inline-block text-[10px] px-1.5 py-0.5 rounded ${className}`}>{children}</span>;
+      const CELLCLS={free:'bg-green-100 border border-green-400',single:'bg-red-100 border border-red-400',recAmber:'bg-amber-100 border border-amber-400',recBlue:'bg-blue-100 border border-blue-400'};
 
-      /****************************************************
-       * Firebase init – vyplněný config
-       ****************************************************/
+      // bezpečné skládání objektů bez undefined
+      const objIf = (cond, obj) => cond ? obj : {};
+      const nz = v => v!==undefined && v!==null;
+
+      /************* Firebase init *************/
       const firebaseConfig = {
         apiKey: "AIzaSyCJHjEVG_BCjTnHDSQ07Bym-XGAs1k_fXw",
         authDomain: "rezervace-e7631.firebaseapp.com",
@@ -65,106 +52,89 @@
         messagingSenderId: "331678302051",
         appId: "1:331678302051:web:6662a934039c9667629d56"
       };
+      if(!firebaseConfig.apiKey){ document.body.innerHTML="<div style='padding:24px'>Chybí Firebase config.</div>"; throw new Error('No Firebase config'); }
 
-      if (!firebaseConfig.apiKey) {
-        document.body.innerHTML = '<div style="padding:24px;font-family:ui-sans-serif,system-ui">\
-          <h1 style="font-size:20px;font-weight:700;margin:0 0 8px">Firebase není nastavený</h1>\
-          <p style="margin:0 0 8px">V souboru <code>index.html</code> doplň objekt <code>firebaseConfig</code> údaji z Firebase konzole.</p>\
-          <p style="margin:0">Poté stránku načti znovu.</p>\
-        </div>';
-        throw new Error('Firebase config missing');
-      }
+      const app=firebase.initializeApp(firebaseConfig);
+      const auth=firebase.auth();
+      const db=firebase.firestore();
 
-      const app = firebase.initializeApp(firebaseConfig);
-      const auth = firebase.auth();
-      const db   = firebase.firestore();
-
-      /****************************************************
-       * Dialogy – Datum, Místnost, Rezervace
-       ****************************************************/
-      function DateModal({open,valueISO,onClose,onChange}) {
-        if (!open) return null;
+      /************* Dialogy *************/
+      function DateModal({open,valueISO,onClose,onChange}){ if(!open) return null;
         return (
           <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
             <div className="bg-white rounded-2xl shadow-xl w-full max-w-sm p-4 max-h-[90vh] overflow-y-auto">
-              <div className="flex items-center justify-between mb-3">
-                <h3 className="text-lg font-semibold">Vyber datum</h3>
-                <button onClick={onClose} className="p-2 rounded-full hover:bg-gray-100">✕</button>
-              </div>
-              <input type="date" className="w-full border rounded-xl px-3 py-2" value={valueISO} onChange={(e)=>onChange(e.target.value)}/>
-              <div className="flex justify-end mt-3">
-                <button onClick={onClose} className="px-3 py-2 rounded-xl border">Hotovo</button>
-              </div>
+              <div className="flex items-center justify-between mb-3"><h3 className="text-lg font-semibold">Vyber datum</h3><button onClick={onClose} className="p-2 rounded-full hover:bg-gray-100">✕</button></div>
+              <input type="date" className="w-full border rounded-xl px-3 py-2" value={valueISO} onChange={e=>onChange(e.target.value)} />
+              <div className="flex justify-end mt-3"><button onClick={onClose} className="px-3 py-2 rounded-xl border">Hotovo</button></div>
             </div>
           </div>
         );
       }
 
-      function RoomDialog({open,initial,onClose,onSave}) {
+      function RoomDialog({open,initial,onClose,onSave}){
         const [name,setName]=useState(""),[floor,setFloor]=useState(""),[code,setCode]=useState(""),
               [type,setType]=useState("room"),[max,setMax]=useState(1);
-        useEffect(()=>{ if(open){ setName(initial?.name||""); setFloor(initial?.floor||""); setCode(initial?.code||""); setType(initial?.type||"room"); setMax(initial?.max||1);} },[open,initial]);
+        useEffect(()=>{ if(open){ setName(initial?.name||""); setFloor(initial?.floor||""); setCode(initial?.code||""); setType(initial?.type||"room"); setMax(initial?.max||1); } },[open,initial]);
         if(!open) return null; const isEquip=type==="equipment";
-        return(
+        return (
           <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
             <div className="bg-white rounded-2xl shadow-xl w-full max-w-md p-4 max-h-[90vh] overflow-y-auto">
-              <div className="flex items-center justify-between mb-3">
-                <h3 className="text-lg font-semibold">{initial?"Upravit místnost":"Nová místnost"}</h3>
-                <button onClick={onClose} className="p-2 rounded-full hover:bg-gray-100">✕</button>
-              </div>
+              <div className="flex items-center justify-between mb-3"><h3 className="text-lg font-semibold">{initial?"Upravit místnost":"Nová místnost"}</h3><button onClick={onClose} className="p-2 rounded-full hover:bg-gray-100">✕</button></div>
               <div className="grid grid-cols-6 gap-2">
-                <input className="col-span-3 border rounded-xl px-3 py-2" placeholder="Název" value={name} onChange={e=>setName(e.target.value)}/>
-                <input className="col-span-2 border rounded-xl px-3 py-2" placeholder="Patro" value={floor} onChange={e=>setFloor(e.target.value)}/>
-                <input className="col-span-1 border rounded-xl px-3 py-2" placeholder="Zkratka" value={code} onChange={e=>setCode(e.target.value)}/>
+                <input className="col-span-3 border rounded-xl px-3 py-2" placeholder="Název" value={name} onChange={e=>setName(e.target.value)} />
+                <input className="col-span-2 border rounded-xl px-3 py-2" placeholder="Patro" value={floor} onChange={e=>setFloor(e.target.value)} />
+                <input className="col-span-1 border rounded-xl px-3 py-2" placeholder="Zkratka" value={code} onChange={e=>setCode(e.target.value)} />
                 <select className="col-span-3 border rounded-xl px-3 py-2" value={type} onChange={e=>setType(e.target.value)}>
                   <option value="room">Učebna</option>
                   <option value="equipment">Pomůcka</option>
                 </select>
-                <input className="col-span-3 border rounded-xl px-3 py-2" type="number" min="1" placeholder="Max. kusů" value={max} onChange={e=>setMax(Number(e.target.value))} disabled={!isEquip}/>
+                <input className="col-span-3 border rounded-xl px-3 py-2" type="number" min="1" placeholder="Max. kusů"
+                  value={max} onChange={e=>setMax(Math.max(1,Number(e.target.value)||1))} disabled={!isEquip}/>
               </div>
               <div className="flex justify-end gap-2 mt-4">
                 <button onClick={onClose} className="px-3 py-2 rounded-xl border">Zrušit</button>
                 {/* max posíláme jen u pomůcek */}
                 <button
                   onClick={()=>{
-                    const payload = { name, floor, code, type };
-                    if (isEquip) payload.max = Math.max(1, Number(max) || 1);
+                    const payload = { name: name.trim(), floor: floor.trim(), code: code.trim(), type };
+                    if(type==='equipment'){ payload.max = Math.max(1, Number(max)||1); }
                     onSave(payload);
-                    onClose();
                   }}
-                  className="px-3 py-2 rounded-xl bg-black text-white"
-                >Uložit</button>
+                  className="px-3 py-2 rounded-xl bg-black text-white">Uložit</button>
               </div>
             </div>
           </div>
         );
       }
 
-      function ReservationDialog({open,onClose,onSave,teachers,initial,room,editingRecurring}) {
+      function ReservationDialog({open,onClose,onSave,teachers,initial,room,editingRecurring}){
         const [teacherId,setTeacherId]=useState(initial?.teacherId||teachers[0]?.id||"");
-        const defaultPieces = room?.type === "equipment" ? (room?.max || 1) : 1;
-        const [pieces,setPieces]=useState(initial?.pieces ?? defaultPieces);
+        const defPieces = room?.type==='equipment' ? (room?.max||1) : 1;
+        const [pieces,setPieces]=useState(nz(initial?.pieces)?initial?.pieces:defPieces);
         const [note,setNote]=useState(initial?.note||"");
 
-        const isRoom = room?.type === "room";
-        const [repeatOn, setRepeatOn] = useState(!!editingRecurring);
-        const [repeatMode, setRepeatMode] = useState(editingRecurring?.mode || 'until'); // 'until' | 'weeks'
-        const [repeatWeeks, setRepeatWeeks] = useState(editingRecurring?.weeks || 4);
-        const [allowElsewhere, setAllowElsewhere] = useState(!!editingRecurring?.allowElsewhere && isRoom);
+        const isRoom = room?.type==='room';
+        const isEquip = room?.type==='equipment';
+        const [repeatOn,setRepeatOn]=useState(!!editingRecurring);
+        const [repeatMode,setRepeatMode]=useState(editingRecurring?.mode||'until');
+        const [repeatWeeks,setRepeatWeeks]=useState(editingRecurring?.weeks||4);
+        const [allowElsewhere,setAllowElsewhere]=useState(!!editingRecurring?.allowElsewhere && isRoom);
 
-        useEffect(()=>{ if(open){ setPieces(initial?.pieces ?? defaultPieces); setRepeatOn(!!editingRecurring); setRepeatMode(editingRecurring?.mode || 'until'); setRepeatWeeks(editingRecurring?.weeks || 4); setAllowElsewhere(!!editingRecurring?.allowElsewhere && isRoom); } },[open,initial,room,editingRecurring]);
+        useEffect(()=>{ if(open){
+          setPieces(nz(initial?.pieces)?initial.pieces:defPieces);
+          setRepeatOn(!!editingRecurring);
+          setRepeatMode(editingRecurring?.mode||'until');
+          setRepeatWeeks(editingRecurring?.weeks||4);
+          setAllowElsewhere(!!editingRecurring?.allowElsewhere && isRoom);
+        }},[open,initial,room,editingRecurring]);
 
         if(!open) return null;
-        const isEquip = room?.type==="equipment";
         const maxPieces=Math.max(1,room?.max||1);
 
         return (
           <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30">
             <div className="bg-white rounded-2xl shadow-xl w-full max-w-md p-4 max-h-[90vh] overflow-y-auto">
-              <div className="flex items-center justify-between mb-3">
-                <h3 className="text-lg font-semibold">{editingRecurring?"Upravit opakování":"Nová rezervace"}</h3>
-                <button onClick={onClose} className="p-2 rounded-full hover:bg-gray-100">✕</button>
-              </div>
+              <div className="flex items-center justify-between mb-3"><h3 className="text-lg font-semibold">{editingRecurring?"Upravit opakování":"Nová rezervace"}</h3><button onClick={onClose} className="p-2 rounded-full hover:bg-gray-100">✕</button></div>
 
               <label className="block text-sm mb-2">Učitel/ka
                 <select className="w-full border rounded-xl px-3 py-2 mt-1" value={teacherId} onChange={e=>setTeacherId(e.target.value)}>
@@ -174,10 +144,8 @@
 
               {isEquip && (
                 <div className="mb-2">
-                  <div className="flex justify-between text-xs text-gray-600">
-                    <span>Počet kusů</span><span>{pieces} / {maxPieces}</span>
-                  </div>
-                  <input type="range" min="1" max={maxPieces} value={pieces} onChange={(e)=>setPieces(Number(e.target.value))} className="w-full"/>
+                  <div className="flex justify-between text-xs text-gray-600"><span>Počet kusů</span><span>{pieces} / {maxPieces}</span></div>
+                  <input type="range" min="1" max={maxPieces} value={pieces} onChange={e=>setPieces(Number(e.target.value))} className="w-full"/>
                 </div>
               )}
 
@@ -185,12 +153,11 @@
                 <input className="w-full border rounded-xl px-3 py-2 mt-1" value={note} onChange={e=>setNote(e.target.value)}/>
               </label>
 
-              {/* Opakování */}
               <div className="mt-4 border-t pt-3">
                 <div className="text-sm font-medium mb-2">Opakovat každý týden</div>
                 <div className="inline-flex rounded-xl border overflow-hidden mb-3">
-                  <button type="button" className={`px-3 py-1 ${!repeatOn ? 'bg-black text-white':'bg-white'}`} onClick={()=>setRepeatOn(false)}>Vypnuto</button>
-                  <button type="button" className={`px-3 py-1 ${repeatOn ? 'bg-black text-white':'bg-white'}`} onClick={()=>setRepeatOn(true)}>Zapnuto</button>
+                  <button type="button" className={`px-3 py-1 ${!repeatOn?'bg-black text-white':'bg-white'}`} onClick={()=>setRepeatOn(false)}>Vypnuto</button>
+                  <button type="button" className={`px-3 py-1 ${ repeatOn?'bg-black text-white':'bg-white'}`} onClick={()=>setRepeatOn(true)}>Zapnuto</button>
                 </div>
 
                 {repeatOn && (
@@ -198,8 +165,8 @@
                     <div className="text-sm">
                       <div className="mb-1">Délka opakování</div>
                       <div className="inline-flex rounded-xl border overflow-hidden">
-                        <button type="button" className={`px-3 py-1 ${repeatMode==='until' ? 'bg-black text-white':'bg-white'}`} onClick={()=>setRepeatMode('until')}>Do konce roku</button>
-                        <button type="button" className={`px-3 py-1 ${repeatMode==='weeks' ? 'bg-black text-white':'bg-white'}`} onClick={()=>setRepeatMode('weeks')}>Počet týdnů</button>
+                        <button type="button" className={`px-3 py-1 ${repeatMode==='until'?'bg-black text-white':'bg-white'}`} onClick={()=>setRepeatMode('until')}>Do konce roku</button>
+                        <button type="button" className={`px-3 py-1 ${repeatMode==='weeks'?'bg-black text-white':'bg-white'}`} onClick={()=>setRepeatMode('weeks')}>Počet týdnů</button>
                       </div>
                     </div>
 
@@ -207,7 +174,7 @@
                       <label className="text-sm block">
                         <span className="block mb-1">Počet týdnů</span>
                         <input type="number" min="1" max="40" className="w-full border rounded-xl px-3 py-2"
-                          value={repeatWeeks} onChange={(e)=>setRepeatWeeks(Math.max(1,Math.min(40,Number(e.target.value)||1)))} />
+                          value={repeatWeeks} onChange={e=>setRepeatWeeks(Math.max(1,Math.min(40,Number(e.target.value)||1)))} />
                       </label>
                     )}
 
@@ -215,12 +182,10 @@
                       <div className="text-sm">
                         <div className="mb-1">Místo konání</div>
                         <div className="inline-flex rounded-xl border overflow-hidden">
-                          <button type="button" className={`px-3 py-1 ${!allowElsewhere ? 'bg-black text-white':'bg-white'}`} onClick={()=>setAllowElsewhere(false)}>Hodina musí být v učebně</button>
-                          <button type="button" className={`px-3 py-1 ${allowElsewhere ? 'bg-black text-white':'bg-white'}`} onClick={()=>setAllowElsewhere(true)}>Hodina může být i jinde</button>
+                          <button type="button" className={`px-3 py-1 ${!allowElsewhere?'bg-black text-white':'bg-white'}`} onClick={()=>setAllowElsewhere(false)}>Hodina musí být v učebně</button>
+                          <button type="button" className={`px-3 py-1 ${ allowElsewhere?'bg-black text-white':'bg-white'}`} onClick={()=>setAllowElsewhere(true)}>Hodina může být i jinde</button>
                         </div>
-                        <div className="text-xs text-gray-600 mt-1">
-                          {allowElsewhere ? 'Opakované rezervace budou modře.' : 'Opakované rezervace budou žlutě.'}
-                        </div>
+                        <div className="text-xs text-gray-600 mt-1">{allowElsewhere?'Opakované rezervace budou modře.':'Opakované rezervace budou žlutě.'}</div>
                       </div>
                     )}
                   </div>
@@ -234,7 +199,7 @@
                     onSave({
                       teacherId,
                       pieces: isEquip ? Number(pieces) : undefined,
-                      note,
+                      note: note || undefined,
                       repeat: repeatOn ? {
                         mode: repeatMode,
                         weeks: repeatMode==='weeks' ? repeatWeeks : undefined,
@@ -243,71 +208,69 @@
                     });
                     onClose();
                   }}
-                  className="px-3 py-2 rounded-xl bg-black text-white"
-                >Uložit</button>
+                  className="px-3 py-2 rounded-xl bg-black text-white">Uložit</button>
               </div>
             </div>
           </div>
         );
       }
 
-      /****************************************************
-       * App – Firestore + role
-       ****************************************************/
+      /************* App *************/
       function App(){
-        // --- state ---
         const [selectedDate,setSelectedDate]=useState(new Date());
-        const selectedIso = toISO(selectedDate);
+        const selectedIso=toISO(selectedDate);
 
+        // auth/role
         const [authUser,setAuthUser]=useState(null);
         const [me,setMe]=useState(null);
         const [loadingAuth,setLoadingAuth]=useState(true);
         const [waitingApproval,setWaitingApproval]=useState(false);
 
+        // data
         const [rooms,setRooms]=useState([]);
-        const [teachers,setTeachers]=useState([]);
+        const [teachers,setTeachers]=useState([]); // derived from approved users
         const [reservations,setReservations]=useState({});
         const [recurring,setRecurring]=useState([]);
         const [allUsers,setAllUsers]=useState([]);
+
+        // ui
         const [showSettings,setShowSettings]=useState(false);
         const [dateModal,setDateModal]=useState(false);
         const [editingRoom,setEditingRoom]=useState(null);
         const [creatingRoom,setCreatingRoom]=useState(false);
         const [dialog,setDialog]=useState(null);
+        const [dragRoomId,setDragRoomId]=useState(null);
+        const [isDraggingRoom,setIsDraggingRoom]=useState(false);
 
-        // drag & drop (jen pořadí v UI)
-        const [dragRoomId, setDragRoomId] = useState(null);
-        const [isDraggingRoom, setIsDraggingRoom] = useState(false);
+        // vlastní seznamy
+        const [mySingles,setMySingles]=useState([]);
+        const [myRecurring,setMyRecurring]=useState([]);
 
-        // --- hooks MUSÍ být před jakýmkoli returnem ---
-        const workweek = useMemo(()=>{
-          const start = startOfWeek(selectedDate);
-          return [0,1,2,3,4].map(off=>addDays(start,off));
-        }, [selectedDate]);
-
+        // ===== AUTH =====
         useEffect(()=>{
           const unsub = auth.onAuthStateChanged(async (u)=>{
             setAuthUser(u);
             if(!u){ setMe(null); setWaitingApproval(false); setLoadingAuth(false); return; }
 
-            const ref = db.collection('users').doc(u.uid);
-            const doc = await ref.get();
-            const isBootstrapAdmin = (u.email === 'dgunka@gymnaziumbma.cz');
+            const ref=db.collection('users').doc(u.uid);
+            const snap=await ref.get();
 
-            if(!doc.exists){
+            const bootstrapAdmin = (u.email==='dgunka@gymnaziumbma.cz');
+
+            if(!snap.exists){
               await ref.set({
-                email: u.email || '',
-                displayName: u.displayName || (u.email? u.email.split('@')[0] : 'Uživatel'),
-                isAdmin: isBootstrapAdmin,
-                approved: isBootstrapAdmin,
-                createdAt: firebase.firestore.FieldValue.serverTimestamp(),
+                email: u.email||'',
+                displayName: u.displayName || (u.email?u.email.split('@')[0]:'Uživatel'),
+                isAdmin: bootstrapAdmin,
+                approved: bootstrapAdmin || (await db.collection('allowlist').doc((u.email||'').toLowerCase()).get()).exists,
+                createdAt: firebase.firestore.FieldValue.serverTimestamp()
               }, {merge:true});
-            } else if (isBootstrapAdmin) {
-              await ref.set({ isAdmin: true, approved: true }, { merge: true });
+            } else if(bootstrapAdmin){
+              await ref.set({isAdmin:true,approved:true},{merge:true});
             }
 
-            const snap = await ref.get();
-            const data = snap.data();
+            const final = await ref.get();
+            const data = final.data();
             setMe(data);
             setWaitingApproval(!data.approved);
             setLoadingAuth(false);
@@ -315,213 +278,198 @@
           return () => unsub && unsub();
         },[]);
 
+        // users -> teachers
         useEffect(()=>{
           if(!authUser || !me || waitingApproval) return;
-          const unsubUsers = db.collection('users').onSnapshot((q)=>{
-            const list = q.docs.map(d=>({id:d.id, ...d.data()}));
+          const unsub = db.collection('users').onSnapshot(q=>{
+            const list=q.docs.map(d=>({id:d.id,...d.data()}));
             setAllUsers(list);
-            const allowed = list.filter(u=>u.approved);
-            setTeachers(allowed.map(u=>({id:u.id, name: u.displayName || u.email})));
-          });
-          return () => unsubUsers && unsubUsers();
-        },[!!authUser, !!me, waitingApproval]);
-
-        useEffect(()=>{
-          if(!authUser || !me || waitingApproval) return;
-          const unsub = db.collection('rooms').orderBy('name','asc').onSnapshot(q=>{
-            setRooms(q.docs.map(d=>({id:d.id,...d.data()})));
-          });
+            const allowed=list.filter(u=>u.approved);
+            setTeachers(allowed.map(u=>({id:u.id, name:u.displayName || u.email})));
+          }, err=>console.error('users snapshot error', err));
           return () => unsub && unsub();
         },[!!authUser, !!me, waitingApproval]);
 
+        // rooms
         useEffect(()=>{
           if(!authUser || !me || waitingApproval) return;
-          const unsub = db.collection('reservations').where('dateISO','==',selectedIso).onSnapshot(q=>{
-            const dayMap = {};
-            q.docs.forEach(d=>{
-              const r = d.data();
-              dayMap[r.roomId] ??= {};
-              dayMap[r.roomId][r.period] = { teacherId:r.teacherId, pieces:r.pieces, note:r.note, createdBy:r.createdBy };
-            });
-            setReservations(dayMap);
-          });
+          const unsub=db.collection('rooms').orderBy('name','asc').onSnapshot(q=>{
+            setRooms(q.docs.map(d=>({id:d.id,...d.data()})));
+          }, err=>console.error('rooms snapshot error', err));
+          return () => unsub && unsub();
+        },[!!authUser, !!me, waitingApproval]);
+
+        // reservations (selected day)
+        useEffect(()=>{
+          if(!authUser || !me || waitingApproval) return;
+          const unsub=db.collection('reservations').where('dateISO','==',selectedIso)
+            .onSnapshot(q=>{
+              const day={};
+              q.docs.forEach(d=>{
+                const r=d.data(); day[r.roomId]??={}; day[r.roomId][r.period]={teacherId:r.teacherId,pieces:r.pieces,note:r.note,createdBy:r.createdBy};
+              });
+              setReservations(day);
+            }, err=>console.error('reservations snapshot error', err));
           return () => unsub && unsub();
         },[!!authUser, !!me, waitingApproval, selectedIso]);
 
+        // recurring (all)
         useEffect(()=>{
           if(!authUser || !me || waitingApproval) return;
-          const unsub = db.collection('recurring').onSnapshot(q=>{
-            setRecurring(q.docs.map(d=>({id:d.id, ...d.data()})));
-          });
+          const unsub=db.collection('recurring').onSnapshot(q=>{
+            setRecurring(q.docs.map(d=>({id:d.id,...d.data()})));
+          }, err=>console.error('recurring snapshot error', err));
           return () => unsub && unsub();
         },[!!authUser, !!me, waitingApproval]);
 
-        // čistá funkce (bez hooks)
-        function occursOn(dateISO, rec){
-          if (cmpISO(dateISO, rec.startISO) < 0) return false;
-          const days = diffDays(dateISO, rec.startISO);
-          if (days % 7 !== 0) return false;
-          if (rec.mode === 'weeks' && typeof rec.weeks === 'number'){
-            const weekIndex = Math.floor(days / 7);
-            return weekIndex >= 0 && weekIndex < rec.weeks;
-          }
-          if (rec.endISO && cmpISO(dateISO, rec.endISO) > 0) return false;
-          return true;
-        }
+        // moje seznamy
+        useEffect(()=>{
+          if(!authUser || !me || waitingApproval) return;
+          const u=authUser.uid;
+          const unsub1=db.collection('reservations').where('createdBy','==',u).onSnapshot(q=>{
+            setMySingles(q.docs.map(d=>({id:d.id,...d.data()})));
+          });
+          const unsub2=db.collection('recurring').where('createdBy','==',u).onSnapshot(q=>{
+            setMyRecurring(q.docs.map(d=>({id:d.id,...d.data()})));
+          });
+          return ()=>{unsub1&&unsub1();unsub2&&unsub2();};
+        },[!!authUser, !!me, waitingApproval]);
 
-        const effectivePlan = useMemo(()=>{
-          const plan = JSON.parse(JSON.stringify(reservations || {}));
-          (recurring || []).forEach(r=>{
-            if(!occursOn(selectedIso, r)) return;
-            plan[r.roomId] ??= {};
+        // occursOn helper
+        const occursOn=(dateISO,rec)=>{
+          if(cmpISO(dateISO,rec.startISO)<0) return false;
+          const days=diffDays(dateISO,rec.startISO);
+          if(days%7!==0) return false;
+          if(rec.mode==='weeks' && typeof rec.weeks==='number'){
+            const weekIndex=Math.floor(days/7);
+            return weekIndex>=0 && weekIndex<rec.weeks;
+          }
+          if(rec.endISO && cmpISO(dateISO,rec.endISO)>0) return false;
+          return true;
+        };
+
+        // effective plan
+        const effectivePlan=useMemo(()=>{
+          const plan=JSON.parse(JSON.stringify(reservations||{}));
+          (recurring||[]).forEach(r=>{
+            if(!occursOn(selectedIso,r)) return;
+            plan[r.roomId]??={};
             if(!plan[r.roomId][r.period]){
-              plan[r.roomId][r.period] = {
-                teacherId: r.teacherId,
-                pieces: r.pieces,
-                note: r.note,
-                recurringId: r.id,
-                allowElsewhere: !!r.allowElsewhere,
-                createdBy: r.createdBy,
-              };
+              plan[r.roomId][r.period]={teacherId:r.teacherId,pieces:r.pieces,note:r.note,recurringId:r.id,allowElsewhere:!!r.allowElsewhere,createdBy:r.createdBy};
             }
           });
           return plan;
-        }, [reservations, recurring, selectedIso]);
+        },[reservations,recurring,selectedIso]);
 
-        // --- CRUD rooms ---
-        const addRoom = async (payload)=>{
-          const data = {
-            name: (payload.name || '').trim(),
-            floor: (payload.floor || '').trim(),
-            code: (payload.code || payload.name?.slice(0,2)?.toUpperCase() || 'XX').trim(),
-            type: payload.type === 'equipment' ? 'equipment' : 'room',
-          };
-          if (data.type === 'equipment') data.max = Math.max(1, Number(payload.max) || 1);
-          await db.collection('rooms').add(data);
-        };
-        const updateRoom = async (id, patch)=>{
-          const data = {};
-          if (typeof patch.name  !== 'undefined')  data.name  = (patch.name  || '').trim();
-          if (typeof patch.floor !== 'undefined')  data.floor = (patch.floor || '').trim();
-          if (typeof patch.code  !== 'undefined')  data.code  = (patch.code  || '').trim();
-          if (typeof patch.type  !== 'undefined')  data.type  = patch.type === 'equipment' ? 'equipment' : 'room';
-          if ((data.type || patch.type) === 'equipment') {
-            if (typeof patch.max !== 'undefined') data.max = Math.max(1, Number(patch.max) || 1);
-          } else if ('max' in patch) {
-            data.max = firebase.firestore.FieldValue.delete();
-          }
-          await db.collection('rooms').doc(id).set(data, { merge: true });
-        };
-        const removeRoom = async (id)=> await db.collection('rooms').doc(id).delete();
+        // přehled dne
+        function daySummary(date){
+          const iso=toISO(date), items=[];
+          (recurring||[]).forEach(r=>{
+            if(!occursOn(iso,r)) return;
+            items.push({period:r.period,code:(rooms.find(x=>x.id===r.roomId)?.code||"?"),kind:r.allowElsewhere?'rec-blue':'rec-amber'});
+          });
+          items.sort((a,b)=>Number(a.period)-Number(b.period)||a.code.localeCompare(b.code));
+          return items;
+        }
 
-        // --- CRUD reservations / recurring ---
-        async function upsertReservation(dateIso, roomId, period, payload, editingRecurringId=null){
-          const userId = authUser?.uid || 'unknown';
+        // CRUD rooms (admin)
+        const addRoom = async(payload)=>{ await db.collection('rooms').add(payload); };
+        const updateRoom = async(id,patch)=>{ await db.collection('rooms').doc(id).set(patch,{merge:true}); };
+        const removeRoom = async(id)=>{ await db.collection('rooms').doc(id).delete(); };
 
-          // opakování
+        // CRUD reservations/recurring
+        async function upsertReservation(dateIso,roomId,period,payload,editingRecurringId=null){
+          const userId=authUser?.uid||'unknown';
+          const baseSingle = { dateISO:dateIso, roomId, period, teacherId:payload.teacherId, createdBy:userId,
+                               ...(nz(payload.pieces)?{pieces:payload.pieces}:{ }),
+                               ...(payload.note?{note:payload.note}:{ }),
+                               createdAt: firebase.firestore.FieldValue.serverTimestamp() };
+
+          // edit série / vytvoření série
           if(payload.repeat || editingRecurringId){
             const origSnap = editingRecurringId ? await db.collection('recurring').doc(editingRecurringId).get() : null;
             const seriesStartISO = (origSnap && origSnap.exists) ? origSnap.data().startISO : dateIso;
 
             if(payload.repeat){
-              // smazat případný single slot ve startu
-              const daySnap = await db.collection('reservations')
-                .where('dateISO','==', dateIso)
-                .where('roomId','==', roomId)
-                .where('period','==', period)
-                .get();
-              daySnap.forEach(d=> d.ref.delete());
+              // zruš single na startu (ať se neduplikuje)
+              const q = await db.collection('reservations')
+                .where('dateISO','==',dateIso).where('roomId','==',roomId).where('period','==',period).get();
+              q.forEach(d=>d.ref.delete());
 
-              const rec = {
-                roomId, period, teacherId: payload.teacherId,
-                ...(typeof payload.pieces === 'number' ? { pieces: payload.pieces } : {}),
-                ...(payload.note ? { note: payload.note } : {}),
-                startISO: seriesStartISO,
-                createdBy: userId,
-                updatedAt: firebase.firestore.FieldValue.serverTimestamp(),
+              // build rec bez undefined a bez FieldValue.delete() při ADD
+              let rec = {
+                roomId, period, startISO: seriesStartISO, teacherId: payload.teacherId, createdBy: userId,
+                ...(nz(payload.pieces)?{pieces:payload.pieces}:{ }),
+                ...(payload.note?{note:payload.note}:{ }),
               };
-
-              const wantsElsewhere = payload.repeat?.allowElsewhere === true;
-              if (editingRecurringId) {
-                rec.allowElsewhere = wantsElsewhere ? true : firebase.firestore.FieldValue.delete();
-              } else if (wantsElsewhere) {
-                rec.allowElsewhere = true; // u add jen true
-              }
-
               if(payload.repeat.mode==='until'){
-                rec.mode='until';
-                rec.endISO=schoolYearEndISO(parseISO(seriesStartISO));
-                if (editingRecurringId) rec.weeks = firebase.firestore.FieldValue.delete();
+                rec = {...rec, mode:'until', endISO: schoolYearEndISO(parseISO(seriesStartISO))};
               } else {
-                const w = Math.max(1, Number(payload.repeat.weeks)||1);
-                rec.mode='weeks'; rec.weeks=w;
-                rec.endISO = toISO(addWeeks(parseISO(seriesStartISO), w-1));
+                const w=Math.max(1,Number(payload.repeat.weeks)||1);
+                rec = {...rec, mode:'weeks', weeks:w, endISO: toISO(addWeeks(parseISO(seriesStartISO), w-1))};
               }
-
-              if(editingRecurringId){
-                await db.collection('recurring').doc(editingRecurringId).set(rec, {merge:true});
-              } else {
+              if(payload.repeat.allowElsewhere===true){ rec.allowElsewhere = true; }
+              // při vytváření
+              if(!editingRecurringId){
                 rec.createdAt = firebase.firestore.FieldValue.serverTimestamp();
                 await db.collection('recurring').add(rec);
+              } else {
+                // při editaci: merge + případné smazání allowElsewhere
+                const patch = {...rec};
+                const had = !!origSnap.data().allowElsewhere;
+                const shouldRemove = (payload.repeat.allowElsewhere===undefined) && had;
+                if(shouldRemove){ patch.allowElsewhere = firebase.firestore.FieldValue.delete(); }
+                await db.collection('recurring').doc(editingRecurringId).set(patch,{merge:true});
               }
             } else {
-              // vypnuto opakování → smazat sérii, uložit single
-              if(editingRecurringId){
-                await db.collection('recurring').doc(editingRecurringId).delete();
-              }
-              const single = {
-                dateISO: dateIso, roomId, period,
-                teacherId: payload.teacherId,
-                ...(typeof payload.pieces === 'number' ? { pieces: payload.pieces } : {}),
-                ...(payload.note ? { note: payload.note } : {}),
-                createdBy: userId,
-                createdAt: firebase.firestore.FieldValue.serverTimestamp(),
-              };
-              await db.collection('reservations').add(single);
+              // vypnuto opakování → smaž sérii, založ single
+              if(editingRecurringId){ await db.collection('recurring').doc(editingRecurringId).delete(); }
+              await db.collection('reservations').add(baseSingle);
             }
             return;
           }
 
-          // jednorázová
-          const single = {
-            dateISO: dateIso, roomId, period,
-            teacherId: payload.teacherId,
-            ...(typeof payload.pieces === 'number' ? { pieces: payload.pieces } : {}), // jen u pomůcek
-            ...(payload.note ? { note: payload.note } : {}),
-            createdBy: userId,
-            createdAt: firebase.firestore.FieldValue.serverTimestamp(),
-          };
-          await db.collection('reservations').add(single);
+          // jednorázová rezervace
+          await db.collection('reservations').add(baseSingle);
         }
 
         async function clearReservation(dateIso,roomId,period){
-          const q = await db.collection('reservations')
-            .where('dateISO','==', dateIso)
-            .where('roomId','==', roomId)
-            .where('period','==', period)
-            .get();
+          const q=await db.collection('reservations').where('dateISO','==',dateIso).where('roomId','==',roomId).where('period','==',period).get();
           for(const d of q.docs) await d.ref.delete();
         }
-        async function stopRecurring(id){
-          await db.collection('recurring').doc(id).delete();
-        }
+        async function stopRecurring(id){ await db.collection('recurring').doc(id).delete(); }
 
+        // UI/role
         const canUseApp = !!authUser && !!me && me.approved;
+        const isAdmin = !!me?.isAdmin;
 
-        // --- RENDER (až teď podmíněné returny) ---
-        if(loadingAuth){
-          return <div className="max-w-3xl mx-auto p-8">Načítám přihlášení…</div>;
-        }
+        const workweek=useMemo(()=>{
+          const s=startOfWeek(selectedDate); return [0,1,2,3,4].map(off=>addDays(s,off));
+        },[selectedDate]);
+
+        const openCell=(room,period)=>{
+          const cell=effectivePlan?.[room.id]?.[period];
+          if(cell){
+            if(cell.recurringId){
+              const rec=recurring.find(r=>r.id===cell.recurringId);
+              setDialog({dateIso:selectedIso,roomId:room.id,period,initial:cell,editingRecurringId:rec?.id});
+            } else {
+              setDialog({dateIso:selectedIso,roomId:room.id,period,initial:cell});
+            }
+          } else {
+            setDialog({dateIso:selectedIso,roomId:room.id,period});
+          }
+        };
+
+        // auth UI
+        if(loadingAuth) return <div className="max-w-3xl mx-auto p-8">Načítám přihlášení…</div>;
         if(!authUser){
           return (
             <div className="min-h-[70vh] flex items-center justify-center p-6">
               <div className="bg-white/80 rounded-2xl shadow p-6 max-w-md w-full">
                 <h1 className="text-2xl font-bold mb-4">Rezervace Chromebooků a učeben</h1>
-                <p className="mb-4 text-gray-700">Pro pokračování se přihlas svým Google účtem.</p>
-                <button
-                  className="px-4 py-2 rounded-xl bg-black text-white w-full"
-                  onClick={()=> auth.signInWithPopup(new firebase.auth.GoogleAuthProvider())}
-                >Přihlásit se Googlem</button>
+                <p className="mb-4 text-gray-700">Přihlas se Google účtem.</p>
+                <button className="px-4 py-2 rounded-xl bg-black text-white w-full" onClick={()=>auth.signInWithPopup(new firebase.auth.GoogleAuthProvider())}>Přihlásit se Googlem</button>
               </div>
             </div>
           );
@@ -533,54 +481,49 @@
                 <h1 className="text-2xl font-bold mb-2">Účet čeká na schválení</h1>
                 <p className="text-gray-700">Tento účet zatím není schválený administrátorem.</p>
                 <div className="mt-4 text-sm text-gray-600">Přihlášen: {authUser.email}</div>
-                <div className="mt-6 flex gap-2">
-                  <button className="px-3 py-2 rounded-xl border" onClick={()=>auth.signOut()}>Odhlásit</button>
-                </div>
+                <div className="mt-6"><button className="px-3 py-2 rounded-xl border" onClick={()=>auth.signOut()}>Odhlásit</button></div>
               </div>
             </div>
           );
         }
 
+        /************* render *************/
         return (
           <div className="p-4 max-w-7xl mx-auto grid gap-4">
-            {/* horní lišta */}
+            {/* hlavička */}
             <header className="flex items-center justify-between">
               <h1 className="text-2xl font-bold">Rezervace Chromebooků a učeben</h1>
               <div className="flex items-center gap-2">
                 <button onClick={()=>setSelectedDate(addWeeks(selectedDate,-1))} className="px-3 py-2 rounded-xl border bg-white">◀ Týden</button>
                 <button onClick={()=>setDateModal(true)} className="px-3 py-2 rounded-xl border bg-white">📅 Datum</button>
                 <button onClick={()=>setSelectedDate(addWeeks(selectedDate,1))} className="px-3 py-2 rounded-xl border bg-white">Týden ▶</button>
-                <button onClick={()=>setShowSettings(s=>!s)} className="px-3 py-2 rounded-xl border bg-white">{showSettings?'Skrýt nastavení':'Nastavení'}</button>
+                {isAdmin && (
+                  <button onClick={()=>setShowSettings(s=>!s)} className="px-3 py-2 rounded-xl border bg-white">
+                    {showSettings?'Skrýt nastavení':'Nastavení'}
+                  </button>
+                )}
                 <button onClick={()=>auth.signOut()} className="px-3 py-2 rounded-xl border bg-white">Odhlásit</button>
               </div>
             </header>
 
-            {/* pracovní týden – mobilní horizontální scroll */}
+            {/* modal datum */}
+            <DateModal open={dateModal} valueISO={toISO(selectedDate)} onClose={()=>setDateModal(false)} onChange={(v)=>v&&setSelectedDate(parseISO(v))}/>
+
+            {/* pracovní týden */}
             <section className="bg-white/80 rounded-2xl p-4">
               <div className="hidden sm:grid grid-cols-5 text-center text-xs font-medium text-gray-600 mb-2">{["Po","Út","St","Čt","Pá"].map((n,i)=><div key={i} className="py-1">{n}</div>)}</div>
               <div className="sm:grid sm:grid-cols-5 gap-2 flex overflow-x-auto -mx-2 px-2">
                 {workweek.map(d=>{
-                  const sel=isSameDay(d,selectedDate);
-                  const items = (()=> {
-                    const iso = toISO(d), arr=[];
-                    (recurring||[]).forEach(r=>{
-                      if(!occursOn(iso, r)) return;
-                      arr.push({period:r.period, code:(rooms.find(x=>x.id===r.roomId)?.code||"?"), kind: r.allowElsewhere ? 'rec-blue' : 'rec-amber'});
-                    });
-                    arr.sort((a,b)=> Number(a.period)-Number(b.period) || a.code.localeCompare(b.code));
-                    return arr;
-                  })();
-                  return(
+                  const sel=isSameDay(d,selectedDate), items=daySummary(d);
+                  return (
                     <button key={d.toISOString()} onClick={()=>setSelectedDate(d)} className={`sm:h-28 h-24 sm:w-auto w-40 shrink-0 rounded-2xl border p-2 text-left bg-white hover:shadow ${sel?'ring-2 ring-fuchsia-400':''}`}>
                       <div className="text-sm font-semibold">{shortDateCz(d)}</div>
                       <div className="mt-1 flex flex-wrap gap-1">
-                        {items.length===0?<Badge className="bg-green-100 border border-green-400 text-green-800">volno</Badge>:
+                        {items.length===0 ? <Badge className="bg-green-100 border border-green-400 text-green-800">volno</Badge> :
                           items.map((it,idx)=>{
-                            const cls = it.kind==='rec-blue' ? "bg-blue-100 border border-blue-400 text-blue-800"
-                                      : "bg-amber-100 border border-amber-400 text-amber-900";
+                            const cls= it.kind==='rec-blue' ? "bg-blue-100 border border-blue-400 text-blue-800" : "bg-amber-100 border border-amber-400 text-amber-900";
                             return <Badge key={idx} className={cls}>{it.period}. {it.code}</Badge>;
-                          })
-                        }
+                          })}
                       </div>
                     </button>
                   );
@@ -605,41 +548,27 @@
                             </div>
                           </th>
                           {PERIODS.map(p=>{
-                            const cell = effectivePlan?.[room.id]?.[p];
+                            const cell=effectivePlan?.[room.id]?.[p];
                             const isRecurring=!!cell?.recurringId;
-                            const recurringBlue = isRecurring && cell?.allowElsewhere;
-                            const cls = !cell ? CELLCLS.free
-                                      : isRecurring ? (recurringBlue ? CELLCLS.recBlue : CELLCLS.recAmber)
-                                      : CELLCLS.single;
-
+                            const recurringBlue=isRecurring && cell?.allowElsewhere;
+                            const cls=!cell?CELLCLS.free : isRecurring ? (recurringBlue?CELLCLS.recBlue:CELLCLS.recAmber) : CELLCLS.single;
+                            const canDelete = !!me?.isAdmin || (cell?.createdBy && authUser?.uid===cell.createdBy);
                             return (
                               <td key={p} className="align-top p-1">
-                                <div className={`rounded-xl p-2 min-h-16 ${cls}`} onClick={()=>{
-                                  const c = effectivePlan?.[room.id]?.[p];
-                                  if(c){
-                                    if(c.recurringId){
-                                      const rec = recurring.find(r=>r.id===c.recurringId);
-                                      setDialog({dateIso:selectedIso, roomId:room.id, period:p, initial:c, editingRecurringId: rec?.id});
-                                    } else {
-                                      setDialog({dateIso:selectedIso, roomId:room.id, period:p, initial:c});
-                                    }
-                                  } else {
-                                    setDialog({dateIso:selectedIso, roomId:room.id, period:p});
-                                  }
-                                }}>
-                                  {cell?(
+                                <div className={`rounded-xl p-2 min-h-16 ${cls}`} onClick={()=>openCell(room,p)}>
+                                  {cell ? (
                                     <div className="flex flex-col gap-1">
                                       <div className="font-medium flex items-center gap-2">
                                         {(teachers.find(t=>t.id===cell.teacherId)?.name) || '—'}
-                                        {cell.pieces ? <Badge className="bg-white/70 border text-xs">{cell.pieces} ks</Badge> : null}
+                                        {nz(cell.pieces) ? <Badge className="bg-white/70 border text-xs">{cell.pieces} ks</Badge> : null}
                                       </div>
                                       {cell.note && <div className="text-xs">{cell.note}</div>}
                                       <div className="flex gap-2 mt-1">
                                         {isRecurring ? (
                                           <button className="px-2 py-1 rounded-lg border text-xs" onClick={(e)=>{e.stopPropagation(); stopRecurring(cell.recurringId);}}>Zrušit opak.</button>
-                                        ) : (
+                                        ) : canDelete ? (
                                           <button className="px-2 py-1 rounded-lg border text-xs" onClick={(e)=>{e.stopPropagation(); clearReservation(selectedIso,room.id,p);}}>Smazat</button>
-                                        )}
+                                        ) : null}
                                       </div>
                                     </div>
                                   ) : <span className="w-full text-left text-xs block text-green-900">+ Přidat</span>}
@@ -655,12 +584,17 @@
               </div>
             </section>
 
-            {/* nastavení */}
+            {/* Nastavení (jen admin) */}
             {showSettings && (
               <section className="bg-white/80 rounded-2xl p-4 grid grid-cols-1 lg:grid-cols-3 gap-4">
                 <div>
                   <h2 className="text-lg font-semibold mb-2">Učitelé</h2>
-                  <div className="text-sm text-gray-600">Seznam učitelů je odvozen ze schválených uživatelů (viz „Uživatelé“).</div>
+                  <div className="text-sm text-gray-600">Seznam učitelů = všichni schválení uživatelé.</div>
+                  <div className="mt-2 space-y-1 text-sm">
+                    {allUsers.filter(u=>u.approved).map(u=>(
+                      <div key={u.id} className="rounded border px-2 py-1 bg-white">{u.displayName||u.email}</div>
+                    ))}
+                  </div>
                 </div>
 
                 <div>
@@ -671,23 +605,15 @@
                   <div className="flex flex-col gap-2">
                     {rooms.map(r=>(
                       <div key={r.id}
-                        className="flex items-center justify-between rounded-XL border bg-white/70 px-3 py-2 cursor-move select-none"
+                        className="flex items-center justify-between rounded-xl border bg-white/70 px-3 py-2 cursor-move select-none"
                         draggable
-                        onDragStart={()=>{ setDragRoomId(r.id); setIsDraggingRoom(true); }}
-                        onDragEnd={()=>{ setIsDraggingRoom(false); setDragRoomId(null); }}
+                        onDragStart={()=>{setDragRoomId(r.id);setIsDraggingRoom(true);}}
+                        onDragEnd={()=>{setIsDraggingRoom(false);setDragRoomId(null);}}
                         onDragOver={(e)=>e.preventDefault()}
                         onDrop={()=>{
                           if(!dragRoomId || dragRoomId===r.id) return;
-                          const reorder = (arr, fromId, toId)=>{
-                            const copy=[...arr];
-                            const from = copy.findIndex(x=>x.id===fromId);
-                            const to   = copy.findIndex(x=>x.id===toId);
-                            if(from<0||to<0) return arr;
-                            const [m] = copy.splice(from,1);
-                            copy.splice(to,0,m);
-                            return copy;
-                          };
-                          setRooms(prev=>reorder(prev, dragRoomId, r.id));
+                          const reorder=(arr,fromId,toId)=>{const c=[...arr]; const f=c.findIndex(x=>x.id===fromId); const t=c.findIndex(x=>x.id===toId); if(f<0||t<0) return arr; const [m]=c.splice(f,1); c.splice(t,0,m); return c;};
+                          setRooms(prev=>reorder(prev,dragRoomId,r.id));
                           setIsDraggingRoom(false); setDragRoomId(null);
                         }}
                         onClick={()=>{ if(!isDraggingRoom) setEditingRoom(r); }}
@@ -697,10 +623,10 @@
                           <div className="mt-0.5 flex gap-2 items-center text-xs text-gray-700">
                             <span className="px-1.5 py-0.5 rounded bg-gray-100 border">{r.code}</span>
                             <span className="px-1.5 py-0.5 rounded bg-gray-100 border">{r.floor}</span>
-                            <span className="px-1.5 py-0.5 rounded bg-gray-100 border">{r.type==='equipment' ? `pomůcka${r.max?` • max ${r.max}`:''}` : 'učebna'}</span>
+                            <span className="px-1.5 py-0.5 rounded bg-gray-100 border">{r.type==='equipment'?`pomůcka${r.max?` • max ${r.max}`:''}`:'učebna'}</span>
                           </div>
                         </div>
-                        <button className="text-red-600 px-2 py-1 rounded-full hover:bg-red-50" title="Odebrat" onClick={(e)=>{ e.stopPropagation(); removeRoom(r.id); }}>✕</button>
+                        <button className="text-red-600 px-2 py-1 rounded-full hover:bg-red-50" title="Odebrat" onClick={(e)=>{e.stopPropagation();removeRoom(r.id);}}>✕</button>
                       </div>
                     ))}
                   </div>
@@ -708,30 +634,77 @@
 
                 <div>
                   <h2 className="text-lg font-semibold mb-2">Uživatelé</h2>
-                  <div className="text-xs text-gray-600 mb-2">Schvalování a role. Uživatele přidá app při prvním přihlášení.</div>
+                  <div className="text-xs text-gray-600 mb-2">Schvalování a role.</div>
                   <div className="space-y-2">
                     {allUsers.map(u=>(
                       <div key={u.id} className="flex items-center justify-between rounded-xl border bg-white px-3 py-2">
                         <div className="text-sm">
-                          <div className="font-medium">{u.displayName || u.email}</div>
+                          <div className="font-medium">{u.displayName||u.email}</div>
                           <div className="text-xs text-gray-600">{u.email}</div>
                         </div>
                         <div className="flex items-center gap-2 text-sm">
                           <label className="inline-flex items-center gap-1">
-                            <input type="checkbox" checked={!!u.approved} onChange={async (e)=> await db.collection('users').doc(u.id).set({approved:e.target.checked},{merge:true})}/>
+                            <input type="checkbox" checked={!!u.approved} onChange={async (e)=>await db.collection('users').doc(u.id).set({approved:e.target.checked},{merge:true})}/>
                             schválen
                           </label>
                           <label className="inline-flex items-center gap-1">
-                            <input type="checkbox" checked={!!u.isAdmin} onChange={async (e)=> await db.collection('users').doc(u.id).set({isAdmin:e.target.checked},{merge:true})}/>
+                            <input type="checkbox" checked={!!u.isAdmin} onChange={async (e)=>await db.collection('users').doc(u.id).set({isAdmin:e.target.checked},{merge:true})}/>
                             admin
                           </label>
                         </div>
                       </div>
                     ))}
                   </div>
+
+                  <div className="mt-4">
+                    <h3 className="font-semibold mb-1">Předschválení (allowlist)</h3>
+                    <div className="text-xs text-gray-600 mb-2">Zadej e-mail a přidej do allowlistu.</div>
+                    <AllowlistForm />
+                  </div>
                 </div>
               </section>
             )}
+
+            {/* Moje rezervace (všichni uživatelé) */}
+            <section className="bg-white/80 rounded-2xl p-4">
+              <h2 className="text-lg font-semibold mb-2">Moje rezervace</h2>
+              <div className="grid sm:grid-cols-2 gap-4">
+                <div>
+                  <h3 className="font-medium mb-2">Opakované</h3>
+                  {myRecurring.length===0 ? <div className="text-sm text-gray-600">Žádné.</div> :
+                    <div className="space-y-2">
+                      {myRecurring.map(r=>(
+                        <div key={r.id} className="rounded border bg-white px-3 py-2 flex items-center justify-between"
+                          style={{backgroundColor: r.allowElsewhere ? 'rgba(191,219,254,0.5)' : 'rgba(253,230,138,0.5)'}}>
+                          <div className="text-sm">
+                            <div className="font-medium">{rooms.find(x=>x.id===r.roomId)?.name || 'Učebna'}</div>
+                            <div className="text-xs text-gray-600">{r.mode==='weeks' ? `od ${r.startISO} (${r.weeks} týdnů)` : `od ${r.startISO} do ${r.endISO}`}</div>
+                          </div>
+                          <div className="flex gap-2">
+                            <button className="px-3 py-1 rounded-xl border" onClick={()=>setDialog({dateIso:r.startISO,roomId:r.roomId,period:r.period,initial:{teacherId:r.teacherId,pieces:r.pieces,note:r.note},editingRecurringId:r.id})}>Upravit</button>
+                            <button className="px-3 py-1 rounded-xl border" onClick={()=>stopRecurring(r.id)}>Zrušit</button>
+                          </div>
+                        </div>
+                      ))}
+                    </div>}
+                </div>
+                <div>
+                  <h3 className="font-medium mb-2">Jednorázové</h3>
+                  {mySingles.length===0 ? <div className="text-sm text-gray-600">Žádné.</div> :
+                    <div className="space-y-2">
+                      {mySingles.map(s=>(
+                        <div key={s.id} className="rounded border bg-white px-3 py-2 flex items-center justify-between">
+                          <div className="text-sm">
+                            <div className="font-medium">{s.dateISO} · {rooms.find(x=>x.id===s.roomId)?.name || 'Učebna'} · {s.period}. hod.</div>
+                            <div className="text-xs text-gray-600">{s.note||''}</div>
+                          </div>
+                          <button className="px-3 py-1 rounded-xl border" onClick={()=>clearReservation(s.dateISO,s.roomId,s.period)}>Smazat</button>
+                        </div>
+                      ))}
+                    </div>}
+                </div>
+              </div>
+            </section>
 
             {/* dialogy */}
             <ReservationDialog
@@ -743,18 +716,25 @@
               editingRecurring={dialog?.editingRecurringId ? recurring.find(r=>r.id===dialog.editingRecurringId) : null}
               onSave={(payload)=> upsertReservation(dialog.dateIso, dialog.roomId, dialog.period, payload, dialog?.editingRecurringId||null)}
             />
-            <RoomDialog
-              open={!!editingRoom}
-              initial={editingRoom}
-              onClose={()=>setEditingRoom(null)}
-              onSave={async (patch)=>{ await updateRoom(editingRoom.id, patch); setEditingRoom(null); }}
-            />
-            <RoomDialog
-              open={creatingRoom}
-              initial={null}
-              onClose={()=>setCreatingRoom(false)}
-              onSave={async (patch)=>{ await addRoom(patch); setCreatingRoom(false); }}
-            />
+            <RoomDialog open={!!editingRoom} initial={editingRoom} onClose={()=>setEditingRoom(null)} onSave={async (patch)=>{ await updateRoom(editingRoom.id,patch); setEditingRoom(null); }}/>
+            <RoomDialog open={creatingRoom} initial={null} onClose={()=>setCreatingRoom(false)} onSave={async (patch)=>{ await addRoom(patch); setCreatingRoom(false); }}/>
+          </div>
+        );
+      }
+
+      // jednoduchý allowlist formulář (jen adminům se vykreslí)
+      function AllowlistForm(){
+        const [email,setEmail]=React.useState('');
+        const onAdd=async ()=>{
+          const e=(email||'').trim().toLowerCase();
+          if(!e) return;
+          await firebase.firestore().collection('allowlist').doc(e).set({createdAt: firebase.firestore.FieldValue.serverTimestamp()},{merge:true});
+          setEmail('');
+        };
+        return (
+          <div className="flex gap-2">
+            <input className="flex-1 border rounded-xl px-3 py-2" placeholder="ucitel@skola.cz" value={email} onChange={e=>setEmail(e.target.value)} />
+            <button className="px-3 py-2 rounded-xl bg-black text-white" onClick={onAdd}>Přidat</button>
           </div>
         );
       }
