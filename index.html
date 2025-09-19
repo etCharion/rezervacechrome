@@ -9,10 +9,10 @@
     <script crossorigin src="https://unpkg.com/react@18/umd/react.development.js"></script>
     <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
 
-    <!-- Babel pro JSX (dev) -->
+    <!-- Babel pro JSX (vývoj) -->
     <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
 
-    <!-- Tailwind (dev) -->
+    <!-- Tailwind (vývoj) -->
     <script src="https://cdn.tailwindcss.com"></script>
 
     <!-- Firebase compat UMD -->
@@ -124,7 +124,7 @@
               </div>
               <div className="flex justify-end gap-2 mt-4">
                 <button onClick={onClose} className="px-3 py-2 rounded-xl border">Zrušit</button>
-                <!-- max posíláme jen u pomůcek -->
+                {/* max posíláme jen u pomůcek */}
                 <button
                   onClick={()=>{
                     const payload = { name, floor, code, type };
@@ -252,19 +252,18 @@
       }
 
       /****************************************************
-       * App – online režim s Firestore a rolemi
+       * App – Firestore + role
        ****************************************************/
       function App(){
+        // --- state ---
         const [selectedDate,setSelectedDate]=useState(new Date());
         const selectedIso = toISO(selectedDate);
 
-        // Auth & role
         const [authUser,setAuthUser]=useState(null);
         const [me,setMe]=useState(null);
         const [loadingAuth,setLoadingAuth]=useState(true);
         const [waitingApproval,setWaitingApproval]=useState(false);
 
-        // Data
         const [rooms,setRooms]=useState([]);
         const [teachers,setTeachers]=useState([]);
         const [reservations,setReservations]=useState({});
@@ -276,27 +275,26 @@
         const [creatingRoom,setCreatingRoom]=useState(false);
         const [dialog,setDialog]=useState(null);
 
-        // DnD – jen UI pořadí
+        // drag & drop (jen pořadí v UI)
         const [dragRoomId, setDragRoomId] = useState(null);
         const [isDraggingRoom, setIsDraggingRoom] = useState(false);
 
-        // useMemo MUSÍ být před jakýmkoli returnem
+        // --- hooks MUSÍ být před jakýmkoli returnem ---
         const workweek = useMemo(()=>{
           const start = startOfWeek(selectedDate);
           return [0,1,2,3,4].map(off=>addDays(start,off));
         }, [selectedDate]);
 
-        // ===== AUTH =====
         useEffect(()=>{
           const unsub = auth.onAuthStateChanged(async (u)=>{
             setAuthUser(u);
             if(!u){ setMe(null); setWaitingApproval(false); setLoadingAuth(false); return; }
 
             const ref = db.collection('users').doc(u.uid);
-            const exists = await ref.get();
+            const doc = await ref.get();
             const isBootstrapAdmin = (u.email === 'dgunka@gymnaziumbma.cz');
 
-            if(!exists.exists){
+            if(!doc.exists){
               await ref.set({
                 email: u.email || '',
                 displayName: u.displayName || (u.email? u.email.split('@')[0] : 'Uživatel'),
@@ -317,7 +315,6 @@
           return () => unsub && unsub();
         },[]);
 
-        // Uživatelé
         useEffect(()=>{
           if(!authUser || !me || waitingApproval) return;
           const unsubUsers = db.collection('users').onSnapshot((q)=>{
@@ -329,7 +326,6 @@
           return () => unsubUsers && unsubUsers();
         },[!!authUser, !!me, waitingApproval]);
 
-        // Rooms
         useEffect(()=>{
           if(!authUser || !me || waitingApproval) return;
           const unsub = db.collection('rooms').orderBy('name','asc').onSnapshot(q=>{
@@ -338,7 +334,6 @@
           return () => unsub && unsub();
         },[!!authUser, !!me, waitingApproval]);
 
-        // Reservations (den)
         useEffect(()=>{
           if(!authUser || !me || waitingApproval) return;
           const unsub = db.collection('reservations').where('dateISO','==',selectedIso).onSnapshot(q=>{
@@ -353,7 +348,6 @@
           return () => unsub && unsub();
         },[!!authUser, !!me, waitingApproval, selectedIso]);
 
-        // Recurring
         useEffect(()=>{
           if(!authUser || !me || waitingApproval) return;
           const unsub = db.collection('recurring').onSnapshot(q=>{
@@ -362,7 +356,7 @@
           return () => unsub && unsub();
         },[!!authUser, !!me, waitingApproval]);
 
-        // occursOn
+        // čistá funkce (bez hooks)
         function occursOn(dateISO, rec){
           if (cmpISO(dateISO, rec.startISO) < 0) return false;
           const days = diffDays(dateISO, rec.startISO);
@@ -375,7 +369,6 @@
           return true;
         }
 
-        // Effective plan
         const effectivePlan = useMemo(()=>{
           const plan = JSON.parse(JSON.stringify(reservations || {}));
           (recurring || []).forEach(r=>{
@@ -395,7 +388,7 @@
           return plan;
         }, [reservations, recurring, selectedIso]);
 
-        // CRUD rooms
+        // --- CRUD rooms ---
         const addRoom = async (payload)=>{
           const data = {
             name: (payload.name || '').trim(),
@@ -421,17 +414,17 @@
         };
         const removeRoom = async (id)=> await db.collection('rooms').doc(id).delete();
 
-        // CRUD reservations / recurring
+        // --- CRUD reservations / recurring ---
         async function upsertReservation(dateIso, roomId, period, payload, editingRecurringId=null){
           const userId = authUser?.uid || 'unknown';
 
-          // === Opakování ===
+          // opakování
           if(payload.repeat || editingRecurringId){
             const origSnap = editingRecurringId ? await db.collection('recurring').doc(editingRecurringId).get() : null;
             const seriesStartISO = (origSnap && origSnap.exists) ? origSnap.data().startISO : dateIso;
 
             if(payload.repeat){
-              // odstranit single-slot v den startu (aby se nedubloval)
+              // smazat případný single slot ve startu
               const daySnap = await db.collection('reservations')
                 .where('dateISO','==', dateIso)
                 .where('roomId','==', roomId)
@@ -439,12 +432,8 @@
                 .get();
               daySnap.forEach(d=> d.ref.delete());
 
-              // společná část dokumentu
               const rec = {
-                roomId,
-                period,
-                teacherId: payload.teacherId,
-                // pieces jen pokud je (pomůcka)
+                roomId, period, teacherId: payload.teacherId,
                 ...(typeof payload.pieces === 'number' ? { pieces: payload.pieces } : {}),
                 ...(payload.note ? { note: payload.note } : {}),
                 startISO: seriesStartISO,
@@ -452,24 +441,20 @@
                 updatedAt: firebase.firestore.FieldValue.serverTimestamp(),
               };
 
-              // allowElsewhere: u ADD přidáme jen pokud je true; u EDIT můžeme mazat přes delete()
               const wantsElsewhere = payload.repeat?.allowElsewhere === true;
               if (editingRecurringId) {
                 rec.allowElsewhere = wantsElsewhere ? true : firebase.firestore.FieldValue.delete();
               } else if (wantsElsewhere) {
-                rec.allowElsewhere = true; // u add jen true, jinak pole vůbec neposíláme
+                rec.allowElsewhere = true; // u add jen true
               }
 
-              // módy: until / weeks
               if(payload.repeat.mode==='until'){
-                rec.mode = 'until';
-                rec.endISO = schoolYearEndISO(parseISO(seriesStartISO));
-                // u editace můžeme smazat weeks, u add ho prostě nepošleme
+                rec.mode='until';
+                rec.endISO=schoolYearEndISO(parseISO(seriesStartISO));
                 if (editingRecurringId) rec.weeks = firebase.firestore.FieldValue.delete();
               } else {
                 const w = Math.max(1, Number(payload.repeat.weeks)||1);
-                rec.mode = 'weeks';
-                rec.weeks = w;
+                rec.mode='weeks'; rec.weeks=w;
                 rec.endISO = toISO(addWeeks(parseISO(seriesStartISO), w-1));
               }
 
@@ -485,9 +470,7 @@
                 await db.collection('recurring').doc(editingRecurringId).delete();
               }
               const single = {
-                dateISO: dateIso,
-                roomId,
-                period,
+                dateISO: dateIso, roomId, period,
                 teacherId: payload.teacherId,
                 ...(typeof payload.pieces === 'number' ? { pieces: payload.pieces } : {}),
                 ...(payload.note ? { note: payload.note } : {}),
@@ -499,11 +482,9 @@
             return;
           }
 
-          // === Jednorázová rezervace ===
+          // jednorázová
           const single = {
-            dateISO: dateIso,
-            roomId,
-            period,
+            dateISO: dateIso, roomId, period,
             teacherId: payload.teacherId,
             ...(typeof payload.pieces === 'number' ? { pieces: payload.pieces } : {}), // jen u pomůcek
             ...(payload.note ? { note: payload.note } : {}),
@@ -527,7 +508,7 @@
 
         const canUseApp = !!authUser && !!me && me.approved;
 
-        // ===== AUTH obrazovky =====
+        // --- RENDER (až teď podmíněné returny) ---
         if(loadingAuth){
           return <div className="max-w-3xl mx-auto p-8">Načítám přihlášení…</div>;
         }
@@ -560,40 +541,6 @@
           );
         }
 
-        // occursOn + effective plan (pro render níže)
-        function occursOn(dateISO, rec){
-          if (cmpISO(dateISO, rec.startISO) < 0) return false;
-          const days = diffDays(dateISO, rec.startISO);
-          if (days % 7 !== 0) return false;
-          if (rec.mode === 'weeks' && typeof rec.weeks === 'number'){
-            const weekIndex = Math.floor(days / 7);
-            return weekIndex >= 0 && weekIndex < rec.weeks;
-          }
-          if (rec.endISO && cmpISO(dateISO, rec.endISO) > 0) return false;
-          return true;
-        }
-        const effectivePlan = useMemo(()=>{
-          const plan = JSON.parse(JSON.stringify(reservations || {}));
-          (recurring || []).forEach(r=>{
-            if(!occursOn(selectedIso, r)) return;
-            plan[r.roomId] ??= {};
-            if(!plan[r.roomId][r.period]){
-              plan[r.roomId][r.period] = {
-                teacherId: r.teacherId,
-                pieces: r.pieces,
-                note: r.note,
-                recurringId: r.id,
-                allowElsewhere: !!r.allowElsewhere,
-                createdBy: r.createdBy,
-              };
-            }
-          });
-          return plan;
-        }, [reservations, recurring, selectedIso]);
-
-        /*********************
-         * Render APP
-         *********************/
         return (
           <div className="p-4 max-w-7xl mx-auto grid gap-4">
             {/* horní lišta */}
