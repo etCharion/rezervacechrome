@@ -117,8 +117,6 @@
 
       function ReservationDialog({open,onClose,onSave,teachers,initial,room,editingRecurring,isAdmin,currentUserId}){
         const [teacherId,setTeacherId]=useState(initial?.teacherId || (isAdmin ? (teachers.find(t=>t.id===currentUserId)?.id || teachers[0]?.id || "") : (currentUserId || "")));
-        const defaultPieces = room?.type==="equipment" ? (room?.max||1) : 1;
-        const [pieces,setPieces]=useState(initial?.pieces ?? defaultPieces);
         const [note,setNote]=useState(initial?.note||"");
 
         const isRoom = room?.type==="room";
@@ -127,7 +125,7 @@
         const [repeatWeeks,setRepeatWeeks]=useState(editingRecurring?.weeks || 4);
         const [allowElsewhere,setAllowElsewhere]=useState(!!editingRecurring?.allowElsewhere && isRoom);
 
-        useEffect(()=>{ if(open){ setPieces(initial?.pieces ?? defaultPieces); setRepeatOn(!!editingRecurring); setRepeatMode(editingRecurring?.mode||'until'); setRepeatWeeks(editingRecurring?.weeks||4); setAllowElsewhere(!!editingRecurring?.allowElsewhere && isRoom);} },[open,initial,room,editingRecurring]);
+        useEffect(()=>{ if(open){ setRepeatOn(!!editingRecurring); setRepeatMode(editingRecurring?.mode||'until'); setRepeatWeeks(editingRecurring?.weeks||4); setAllowElsewhere(!!editingRecurring?.allowElsewhere && isRoom);} },[open,initial,room,editingRecurring]);
         useEffect(()=>{ 
           if(open && !initial?.teacherId){
             setTeacherId(isAdmin ? (currentUserId || teachers[0]?.id || "") : (currentUserId || ""));
@@ -135,9 +133,6 @@
         },[open,teachers,currentUserId,isAdmin,initial]);
 
         if(!open) return null;
-        const isEquip = room?.type==="equipment";
-        const maxPieces = Math.max(1, room?.max||1);
-
         return (
           <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30">
             <div className="bg-white rounded-2xl shadow-xl w-full max-w-md p-4 max-h-[90vh] overflow-y-auto">
@@ -158,13 +153,6 @@
                 <div className="text-sm mb-2">
                   <div className="text-gray-600 mb-1">Učitel/ka</div>
                   <div className="px-3 py-2 border rounded-xl bg-gray-50">{teachers.find(t=>t.id===currentUserId)?.name || '—'}</div>
-                </div>
-              )}
-
-              {isEquip && (
-                <div className="mb-2">
-                  <div className="flex justify-between text-xs text-gray-600"><span>Počet kusů</span><span>{pieces} / {maxPieces}</span></div>
-                  <input type="range" min="1" max={maxPieces} value={pieces} onChange={e=>setPieces(Number(e.target.value))} className="w-full"/>
                 </div>
               )}
 
@@ -219,7 +207,6 @@
                   onClick={()=>{
                     onSave({
                       teacherId,
-                      pieces: isEquip ? Number(pieces) : undefined,
                       note,
                       repeat: repeatOn ? {
                         mode: repeatMode,
@@ -355,7 +342,7 @@
             q.docs.forEach(d=>{
               const r = d.data();
               dayMap[r.roomId] ??= {};
-              dayMap[r.roomId][r.period] = { teacherId:r.teacherId, pieces:r.pieces, note:r.note, createdBy:r.createdBy };
+              dayMap[r.roomId][r.period] = { teacherId:r.teacherId, note:r.note, createdBy:r.createdBy };
             });
             setReservations(dayMap);
           });
@@ -412,7 +399,7 @@
             plan[r.roomId] ??= {};
             if(!plan[r.roomId][r.period]){
               plan[r.roomId][r.period] = {
-                teacherId:r.teacherId, pieces:r.pieces, note:r.note,
+                teacherId:r.teacherId, note:r.note,
                 recurringId:r.id, allowElsewhere: !!r.allowElsewhere, createdBy:r.createdBy
               };
             }
@@ -453,8 +440,7 @@
                 createdBy: userId,
                 updatedAt: firebase.firestore.FieldValue.serverTimestamp(),
               };
-              if(typeof payload.pieces === 'number') rec.pieces = payload.pieces;
-              if(payload.repeat.mode === 'until'){
+if(payload.repeat.mode === 'until'){
                 rec.mode = 'until';
                 rec.endISO = schoolYearEndISO(parseISO(seriesStartISO));
               } else {
@@ -482,8 +468,7 @@
                 createdBy: userId,
                 createdAt: firebase.firestore.FieldValue.serverTimestamp(),
               };
-              if(typeof payload.pieces === 'number') single.pieces = payload.pieces;
-              await db.collection('reservations').add(single);
+await db.collection('reservations').add(single);
             }
           } else {
             const single = {
@@ -493,8 +478,7 @@
               createdBy: userId,
               createdAt: firebase.firestore.FieldValue.serverTimestamp(),
             };
-            if(typeof payload.pieces === 'number') single.pieces = payload.pieces;
-            await db.collection('reservations').add(single);
+await db.collection('reservations').add(single);
           }
         }
 
@@ -659,7 +643,6 @@
                                     <div className="flex flex-col gap-1">
                                       <div className="font-medium flex items-center gap-2">
                                         {(teachers.find(t=>t.id===cell.teacherId)?.name) || '—'}
-                                        {typeof cell.pieces==='number' ? <Badge className="bg-white/70 border text-xs">{cell.pieces} ks</Badge> : null}
                                       </div>
                                       {cell.note && <div className="text-xs">{cell.note}</div>}
                                       <div className="flex gap-2 mt-1">
@@ -699,7 +682,7 @@
                             <div className="text-sm">
                               <span className="font-medium">{rooms.find(x=>x.id===r.roomId)?.name || '—'}</span>
                               {' · hod. '}{r.period}
-                              {typeof r.pieces==='number' ? ` · ${r.pieces} ks` : ''}
+                              
                               {r.note ? ` · ${r.note}` : ''}
                               <div className="text-xs text-gray-600">
                                 {r.mode==='weeks' ? `od ${r.startISO} (${r.weeks} týdnů)` : `od ${r.startISO} do ${r.endISO}`}
@@ -724,7 +707,7 @@
                             <div className="text-sm">
                               <span className="font-medium">{rooms.find(x=>x.id===s.roomId)?.name || '—'}</span>
                               {' · '}{s.dateISO}{' · hod. '}{s.period}
-                              {typeof s.pieces==='number' ? ` · ${s.pieces} ks` : ''}
+                              
                               {s.note ? ` · ${s.note}` : ''}
                             </div>
                           </div>
