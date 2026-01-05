@@ -715,7 +715,7 @@ await db.collection('reservations').add(single);
                 <div className="min-w-[900px]">
                   <table className="w-full text-sm">
                     <thead><tr><th className="text-left p-2 sticky left-0 bg-white/90 backdrop-blur z-10">Učebna</th>{visiblePeriods.map(p=>
-                      <th key={p} className="p-2 min-w-28 text-center">{p}. hod.</th>
+                      <th key={p} className="p-2 min-w-28 text-center">{periodLabel(p)}</th>
                     )}</tr></thead>
                     <tbody>
                       {visibleRooms.map(room=>(
@@ -777,7 +777,7 @@ await db.collection('reservations').add(single);
                                style={{backgroundColor: r.allowElsewhere ? 'rgba(191,219,254,0.5)' : 'rgba(253,230,138,0.5)'}}>
                             <div className="text-sm">
                               <span className="font-medium">{rooms.find(x=>x.id===r.roomId)?.name || '—'}</span>
-                              {' · hod. '}{r.period}
+                              {' · '}{periodLabel(r.period)}
                               
                               {r.note ? ` · ${r.note}` : ''}
                               <div className="text-xs text-gray-600">
@@ -802,7 +802,7 @@ await db.collection('reservations').add(single);
                           <div key={s.id} className="rounded-xl border px-3 py-2 bg-white">
                             <div className="text-sm">
                               <span className="font-medium">{rooms.find(x=>x.id===s.roomId)?.name || '—'}</span>
-                              {' · '}{s.dateISO}{' · hod. '}{s.period}
+                              {' · '}{s.dateISO}{' · '}{periodLabel(s.period)}
                               
                               {s.note ? ` · ${s.note}` : ''}
                             </div>
