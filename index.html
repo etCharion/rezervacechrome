@@ -1,60 +1,955 @@
 <!DOCTYPE html>
 <html lang="cs">
-<head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Rezervace Chromebooků a učeben</title>
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Rezervace Chromebooků a učeben</title>
 
-  <script crossorigin src="https://unpkg.com/react@18/umd/react.development.js"></script>
-  <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
-  <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
-  <script src="https://cdn.tailwindcss.com"></script>
+    <!-- React + ReactDOM (UMD) -->
+    <script crossorigin src="https://unpkg.com/react@18/umd/react.development.js"></script>
+    <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
 
-  <script src="https://www.gstatic.com/firebasejs/9.6.10/firebase-app-compat.js"></script>
-  <script src="https://www.gstatic.com/firebasejs/9.6.10/firebase-auth-compat.js"></script>
-  <script src="https://www.gstatic.com/firebasejs/9.6.10/firebase-firestore-compat.js"></script>
-</head>
+    <!-- Babel (dev only) -->
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
 
-<body class="bg-gradient-to-br from-indigo-100 via-fuchsia-100 to-sky-100">
-<div id="root"></div>
+    <!-- Tailwind (dev only) -->
+    <script src="https://cdn.tailwindcss.com"></script>
 
-<script type="text/babel">
-/*
-  TATO VERZE:
-  - opravuje názvy přestávek:
-    Před 8. hodinou
-    Velká přestávka
-    Obědová přestávka 1–3
-    Po hodinách
-  - jinak je shodná s poslední stabilní verzí
-*/
+    <!-- Firebase compat UMD -->
+    <script src="https://www.gstatic.com/firebasejs/9.6.10/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.6.10/firebase-auth-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.6.10/firebase-firestore-compat.js"></script>
+  </head>
 
-const BREAK_LABELS = {
-  brk_before8: "Před 8. hodinou",
-  brk_big: "Velká přestávka",
-  brk_lunch1: "Obědová přestávka 1",
-  brk_lunch2: "Obědová přestávka 2",
-  brk_lunch3: "Obědová přestávka 3",
-  brk_after: "Po hodinách",
-};
+  <body class="bg-gradient-to-br from-indigo-100 via-fuchsia-100 to-sky-100">
+    <div id="root"></div>
 
-document.getElementById("root").innerHTML = `
-  <div class="p-10 max-w-xl mx-auto bg-white/80 rounded-2xl shadow">
-    <h1 class="text-2xl font-bold mb-4">Hotovo ✔</h1>
-    <p class="mb-2">Popisky přestávek jsou nyní:</p>
-    <ul class="list-disc list-inside text-left">
-      <li>Před 8. hodinou</li>
-      <li>Velká přestávka</li>
-      <li>Obědová přestávka 1</li>
-      <li>Obědová přestávka 2</li>
-      <li>Obědová přestávka 3</li>
-      <li>Po hodinách</li>
-    </ul>
-    <p class="mt-4 text-sm text-gray-600">
-      Tento soubor nahraď za současný <code>index.html</code>.
-    </p>
-  </div>
-`;
-</script>
-</body>
+    <script type="text/babel">
+      const { useState, useEffect, useMemo } = React;
+
+      // ---------- util ----------
+      const toISO = d => new Date(d.getFullYear(), d.getMonth(), d.getDate()).toISOString().slice(0,10);
+      const parseISO = s => { const [y,m,dd]=s.split('-').map(Number); return new Date(y, m-1, dd); };
+      const addDays = (d,n)=>{ const x=new Date(d); x.setDate(x.getDate()+n); return x; };
+      const addWeeks = (d,n)=> addDays(d, n*7);
+      const startOfWeek = d => { const iso = d.getDay() || 7; return addDays(new Date(d.getFullYear(), d.getMonth(), d.getDate()), -(iso-1)); };
+      const isSameDay = (a,b) => a.getFullYear()===b.getFullYear() && a.getMonth()===b.getMonth() && a.getDate()===b.getDate();
+      const fullDateCz = d => d.toLocaleDateString('cs-CZ', { weekday:'long', day:'numeric', month:'long', year:'numeric' });
+      const shortDateCz = d => d.toLocaleDateString('cs-CZ', { day:'numeric', month:'numeric' });
+      const cmpISO = (a,b)=>{ const A=parseISO(a), B=parseISO(b); if (A<B) return -1; if (A>B) return 1; return 0; };
+      const diffDays = (aISO,bISO)=> Math.round((parseISO(aISO) - parseISO(bISO)) / 86400000);
+      const schoolYearEndISO = (date)=>{
+        const y = date.getFullYear(), m = date.getMonth();
+        const endYear = (m >= 8 ? y+1 : y);
+        return new Date(endYear, 5, 30).toISOString().slice(0,10);
+      };
+      const HOURS_PERIODS = ["0","1","2","3","4","5","6","7","8","9"];
+      const BREAKS = [
+        { id:"brk_before8", short:"Před 8", label:"Před 8. hodinou" },
+        { id:"brk_big",     short:"Velká", label:"Velká přestávka" },
+        { id:"brk_lunch1",  short:"Oběd 1", label:"Obědová přestávka 1" },
+        { id:"brk_lunch2",  short:"Oběd 2", label:"Obědová přestávka 2" },
+        { id:"brk_lunch3",  short:"Oběd 3", label:"Obědová přestávka 3" },
+        { id:"brk_after",   short:"Po", label:"Po hodinách" },
+      ];
+      const BREAK_PERIODS = BREAKS.map(b=>b.id);
+
+      const isHourPeriod = (p)=> /^[0-9]+$/.test(String(p));
+      const periodOrder = (p)=>{
+        if(isHourPeriod(p)) return Number(p);
+        const i = BREAKS.findIndex(b=>b.id===p);
+        return 100 + (i>=0? i: 99);
+      };
+      const periodLabelShort = (p)=>{
+        if(isHourPeriod(p)) return `${p}.`;
+        const b = BREAKS.find(x=>x.id===p);
+        return b ? b.short : String(p);
+      };
+      const periodLabel = (p)=>{
+        if(isHourPeriod(p)) return `${p}. hod.`;
+        const b = BREAKS.find(x=>x.id===p);
+        return b ? b.label : String(p);
+      };
+      const Badge=({children,className=''})=> <span className={`inline-block text-[10px] px-1.5 py-0.5 rounded ${className}`}>{children}</span>;
+      const CELLCLS = { free:'bg-green-100 border border-green-400', single:'bg-red-100 border border-red-400', recAmber:'bg-amber-100 border border-amber-400', recBlue:'bg-blue-100 border border-blue-400' };
+
+      // ---------- Firebase init ----------
+      const firebaseConfig = {
+        apiKey: "AIzaSyCJHjEVG_BCjTnHDSQ07Bym-XGAs1k_fXw",
+        authDomain: "rezervace-e7631.firebaseapp.com",
+        projectId: "rezervace-e7631",
+        storageBucket: "rezervace-e7631.firebasestorage.app",
+        messagingSenderId: "331678302051",
+        appId: "1:331678302051:web:6662a934039c9667629d56"
+      };
+      const app = firebase.initializeApp(firebaseConfig);
+      const auth = firebase.auth();
+      const db   = firebase.firestore();
+
+      // ---------- Dialogy ----------
+      function DateModal({open,valueISO,onClose,onChange}){
+        if(!open) return null;
+        return (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
+            <div className="bg-white rounded-2xl shadow-xl w-full max-w-sm p-4 max-h-[90vh] overflow-y-auto">
+              <div className="flex items-center justify-between mb-3">
+                <h3 className="text-lg font-semibold">Vyber datum</h3>
+                <button onClick={onClose} className="p-2 rounded-full hover:bg-gray-100">✕</button>
+              </div>
+              <input type="date" className="w-full border rounded-xl px-3 py-2" value={valueISO} onChange={e=>onChange(e.target.value)} />
+              <div className="flex justify-end mt-3"><button onClick={onClose} className="px-3 py-2 rounded-xl border">Hotovo</button></div>
+            </div>
+          </div>
+        );
+      }
+
+      function RoomDialog({open,initial,onClose,onSave}){
+        const [name,setName]=useState("");
+        const [floor,setFloor]=useState("");
+        const [code,setCode]=useState("");
+        const [type,setType]=useState("room");
+        const [max,setMax]=useState(1);
+        const [usage,setUsage]=useState("hours"); // 'hours' | 'both' | 'breaks'
+
+        useEffect(()=>{
+          if(!open) return;
+          setName(initial?.name||"");
+          setFloor(initial?.floor||"");
+          setCode(initial?.code||"");
+          setType(initial?.type||"room");
+          setMax(typeof initial?.max === 'number' ? initial.max : 1);
+          setUsage(initial?.usage || "hours");
+        },[open,initial]);
+
+        if(!open) return null;
+        const isEquip = type === "equipment";
+
+        return (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
+            <div className="bg-white rounded-2xl shadow-xl w-full max-w-md p-4 max-h-[90vh] overflow-y-auto">
+              <div className="flex items-center justify-between mb-3">
+                <h3 className="text-lg font-semibold">{initial?"Upravit místnost":"Nová místnost"}</h3>
+                <button onClick={onClose} className="p-2 rounded-full hover:bg-gray-100">✕</button>
+              </div>
+
+              <div className="grid grid-cols-6 gap-2">
+                <input className="col-span-3 border rounded-xl px-3 py-2" placeholder="Název" value={name} onChange={e=>setName(e.target.value)} />
+                <input className="col-span-2 border rounded-xl px-3 py-2" placeholder="Patro" value={floor} onChange={e=>setFloor(e.target.value)} />
+                <input className="col-span-1 border rounded-xl px-3 py-2" placeholder="Zkratka" value={code} onChange={e=>setCode(e.target.value)} />
+
+                <select className="col-span-3 border rounded-xl px-3 py-2" value={type} onChange={e=>setType(e.target.value)}>
+                  <option value="room">Učebna</option>
+                  <option value="equipment">Pomůcka</option>
+                </select>
+
+                <select className="col-span-3 border rounded-xl px-3 py-2" value={usage} onChange={e=>setUsage(e.target.value)}>
+                  <option value="hours">Pro hodiny</option>
+                  <option value="both">Obojí</option>
+                  <option value="breaks">Pro přestávky</option>
+                </select>
+
+                <input
+                  className="col-span-3 border rounded-xl px-3 py-2"
+                  type="number"
+                  min="1"
+                  placeholder="Max. kusů (jen pro pomůcky)"
+                  value={max}
+                  onChange={e=>setMax(Number(e.target.value)||1)}
+                  disabled={!isEquip}
+                />
+                <div className="col-span-3 text-xs text-gray-600 flex items-center">
+                  {isEquip ? "Max. kusů je jen informativní." : "Pro učebny se max neřeší."}
+                </div>
+              </div>
+
+              <div className="flex justify-end gap-2 mt-4">
+                <button onClick={onClose} className="px-3 py-2 rounded-xl border">Zrušit</button>
+                <button
+                  onClick={()=>{
+                    const payload = {
+                      name: name.trim(),
+                      floor: floor.trim(),
+                      code: code.trim(),
+                      type,
+                      usage,
+                    };
+                    if(type === "equipment"){
+                      payload.max = Math.max(1, Number(max)||1);
+                    }
+                    onSave(payload);
+                  }}
+                  className="px-3 py-2 rounded-xl bg-black text-white"
+                >Uložit</button>
+              </div>
+            </div>
+          </div>
+        );
+      }
+
+      function ReservationDialog({open,onClose,onSave,teachers,initial,room,editingRecurring,isAdmin,currentUserId}){
+        const [teacherId,setTeacherId]=useState(initial?.teacherId || (isAdmin ? (teachers.find(t=>t.id===currentUserId)?.id || teachers[0]?.id || "") : (currentUserId || "")));
+        const [note,setNote]=useState(initial?.note||"");
+
+        const isRoom = room?.type==="room";
+        const [repeatOn,setRepeatOn]=useState(!!editingRecurring);
+        const [repeatMode,setRepeatMode]=useState(editingRecurring?.mode || 'until');
+        const [repeatWeeks,setRepeatWeeks]=useState(editingRecurring?.weeks || 4);
+        const [allowElsewhere,setAllowElsewhere]=useState(!!editingRecurring?.allowElsewhere && isRoom);
+
+        useEffect(()=>{ if(open){ setRepeatOn(!!editingRecurring); setRepeatMode(editingRecurring?.mode||'until'); setRepeatWeeks(editingRecurring?.weeks||4); setAllowElsewhere(!!editingRecurring?.allowElsewhere && isRoom);} },[open,initial,room,editingRecurring]);
+        useEffect(()=>{ 
+          if(open && !initial?.teacherId){
+            setTeacherId(isAdmin ? (currentUserId || teachers[0]?.id || "") : (currentUserId || ""));
+          }
+        },[open,teachers,currentUserId,isAdmin,initial]);
+
+        if(!open) return null;
+        return (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30">
+            <div className="bg-white rounded-2xl shadow-xl w-full max-w-md p-4 max-h-[90vh] overflow-y-auto">
+              <div className="flex items-center justify-between mb-3">
+                <h3 className="text-lg font-semibold">{editingRecurring?"Upravit opakování":"Nová rezervace"}</h3>
+                <button onClick={onClose} className="p-2 rounded-full hover:bg-gray-100">✕</button>
+              </div>
+
+              {isAdmin ? (
+                <label className="block text-sm mb-2">Učitel/ka
+                  <select className="w-full border rounded-xl px-3 py-2 mt-1" value={teacherId} onChange={e=>setTeacherId(e.target.value)}>
+                    {teachers.map(t=>(
+                      <option key={t.id} value={t.id}>{t.name}</option>
+                    ))}
+                  </select>
+                </label>
+              ) : (
+                <div className="text-sm mb-2">
+                  <div className="text-gray-600 mb-1">Učitel/ka</div>
+                  <div className="px-3 py-2 border rounded-xl bg-gray-50">{teachers.find(t=>t.id===currentUserId)?.name || '—'}</div>
+                </div>
+              )}
+
+              <label className="block text-sm">Poznámka (volit.)
+                <input className="w-full border rounded-xl px-3 py-2 mt-1" value={note} onChange={e=>setNote(e.target.value)}/>
+              </label>
+
+              <div className="mt-4 border-t pt-3">
+                <div className="text-sm font-medium mb-2">Opakovat každý týden</div>
+                <div className="inline-flex rounded-xl border overflow-hidden mb-3">
+                  <button type="button" className={`px-3 py-1 ${!repeatOn ? 'bg-black text-white' : 'bg-white'}`} onClick={()=>setRepeatOn(false)}>Vypnuto</button>
+                  <button type="button" className={`px-3 py-1 ${ repeatOn ? 'bg-black text-white' : 'bg-white'}`} onClick={()=>setRepeatOn(true)}>Zapnuto</button>
+                </div>
+
+                {repeatOn && (
+                  <div className="space-y-3">
+                    <div className="text-sm">
+                      <div className="mb-1">Délka opakování</div>
+                      <div className="inline-flex rounded-xl border overflow-hidden">
+                        <button type="button" className={`px-3 py-1 ${repeatMode==='until' ? 'bg-black text-white':'bg-white'}`} onClick={()=>setRepeatMode('until')}>Do konce roku</button>
+                        <button type="button" className={`px-3 py-1 ${repeatMode==='weeks' ? 'bg-black text-white':'bg-white'}`} onClick={()=>setRepeatMode('weeks')}>Počet týdnů</button>
+                      </div>
+                    </div>
+
+                    {repeatMode==='weeks' && (
+                      <label className="text-sm block">
+                        <span className="block mb-1">Počet týdnů</span>
+                        <input type="number" min="1" max="40" className="w-full border rounded-xl px-3 py-2"
+                          value={repeatWeeks} onChange={(e)=>setRepeatWeeks(Math.max(1, Math.min(40, Number(e.target.value)||1)))} />
+                      </label>
+                    )}
+
+                    {isRoom && (
+                      <div className="text-sm">
+                        <div className="mb-1">Místo konání</div>
+                        <div className="inline-flex rounded-xl border overflow-hidden">
+                          <button type="button" className={`px-3 py-1 ${!allowElsewhere ? 'bg-black text-white':'bg-white'}`} onClick={()=>setAllowElsewhere(false)}>Hodina musí být v učebně</button>
+                          <button type="button" className={`px-3 py-1 ${ allowElsewhere ? 'bg-black text-white':'bg-white'}`} onClick={()=>setAllowElsewhere(true)}>Hodina může být i jinde</button>
+                        </div>
+                        <div className="text-xs text-gray-600 mt-1">
+                          {allowElsewhere ? 'Opakované rezervace budou modře.' : 'Opakované rezervace budou žlutě.'}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
+
+              <div className="flex justify-end gap-2 mt-4">
+                <button onClick={onClose} className="px-3 py-2 rounded-xl border">Zrušit</button>
+                <button
+                  onClick={()=>{
+                    onSave({
+                      teacherId,
+                      note,
+                      repeat: repeatOn ? {
+                        mode: repeatMode,
+                        weeks: repeatWeeks || undefined,
+                        allowElsewhere: isRoom ? allowElsewhere : undefined,
+                      } : null,
+                    });
+                    onClose();
+                  }}
+                  className="px-3 py-2 rounded-xl bg-black text-white"
+                >Uložit</button>
+              </div>
+            </div>
+          </div>
+        );
+      }
+
+      // ---------- App ----------
+      function App(){
+        const [selectedDate,setSelectedDate]=useState(new Date());
+        const selectedIso = toISO(selectedDate);
+
+        const [viewMode,setViewMode]=useState('hours'); // 'hours' | 'breaks'
+
+        // auth & role
+        const [authUser,setAuthUser]=useState(null);
+        const [me,setMe]=useState(null);
+        const [loadingAuth,setLoadingAuth]=useState(true);
+        const [waitingApproval,setWaitingApproval]=useState(false);
+
+        // data
+        const [rooms,setRooms]=useState([]);
+        const [teachers,setTeachers]=useState([]);
+        const [reservations,setReservations]=useState({});
+        const [recurring,setRecurring]=useState([]);
+        const [allUsers,setAllUsers]=useState([]);
+        const [allowlist,setAllowlist]=useState([]);
+        const [showSettings,setShowSettings]=useState(false);
+        const [dateModal,setDateModal]=useState(false);
+        const [editingRoom,setEditingRoom]=useState(null);
+        const [creatingRoom,setCreatingRoom]=useState(false);
+        const [dialog,setDialog]=useState(null);
+
+        // moje přehledy (uživatel)
+        const [mySingles,setMySingles]=useState([]);
+        const [myRecurring,setMyRecurring]=useState([]);
+        const [showMySingles,setShowMySingles]=useState(false);
+        const [showMyRecurring,setShowMyRecurring]=useState(false);
+
+        // DnD – pouze UI
+        const [dragRoomId,setDragRoomId]=useState(null);
+        const [isDraggingRoom,setIsDraggingRoom]=useState(false);
+
+        // hooky, které musí být vždy volané
+        const workweek = useMemo(()=>{
+          const start = startOfWeek(selectedDate);
+          return [0,1,2,3,4].map(off=>addDays(start,off));
+        },[selectedDate]);
+
+
+        const visiblePeriods = useMemo(()=> (viewMode==='hours' ? HOURS_PERIODS : BREAK_PERIODS), [viewMode]);
+        const visibleRooms = useMemo(()=>{
+          return (rooms||[]).filter(r=>{
+            const u = r.usage || 'hours';
+            return viewMode==='hours' ? (u==='hours' || u==='both') : (u==='breaks' || u==='both');
+          });
+        }, [rooms, viewMode]);
+
+        // Range ISO pro aktuální týden
+        const weekStartIso = toISO(startOfWeek(selectedDate));
+        const weekEndIso = toISO(addDays(startOfWeek(selectedDate), 4));
+
+        // auth
+        useEffect(()=>{
+          const unsub = auth.onAuthStateChanged(async (u)=>{
+            setAuthUser(u);
+            if(!u){ setMe(null); setWaitingApproval(false); setLoadingAuth(false); return; }
+
+            const ref = db.collection('users').doc(u.uid);
+            const snap = await ref.get();
+            const isBootstrapAdmin = (u.email === 'dgunka@gymnaziumbma.cz');
+
+            if(!snap.exists){
+              let preapproved=false;
+              try{
+                const allowSnap = await db.collection('allowlist').doc((u.email||'').toLowerCase()).get();
+                preapproved = allowSnap.exists;
+              }catch{}
+              await ref.set({
+                email: u.email || '',
+                displayName: u.displayName || (u.email? u.email.split('@')[0] : 'Uživatel'),
+                isAdmin: isBootstrapAdmin,
+                approved: isBootstrapAdmin || preapproved,
+                createdAt: firebase.firestore.FieldValue.serverTimestamp()
+              }, {merge:true});
+            } else if (isBootstrapAdmin){
+              await ref.set({ isAdmin:true, approved:true }, {merge:true});
+            }
+
+            const snap2 = await ref.get();
+            const data = snap2.data();
+            setMe(data);
+            setWaitingApproval(!data.approved);
+            setLoadingAuth(false);
+          });
+          return ()=>unsub&&unsub();
+        },[]);
+
+        // users -> teachers
+        useEffect(()=>{
+          if(!authUser || !me || waitingApproval) return;
+          const unsub = db.collection('users').onSnapshot(q=>{
+            const list = q.docs.map(d=>({id:d.id, ...d.data()}));
+            setAllUsers(list);
+            const allowed = list.filter(u=>u.approved);
+            setTeachers(allowed.map(u=>({id:u.id, name:u.displayName || u.email})));
+          });
+          return ()=>unsub&&unsub();
+        },[!!authUser, !!me, waitingApproval]);
+
+        // allowlist (pro zobrazení v nastavení)
+        useEffect(()=>{
+          if(!authUser || !me || waitingApproval) return;
+          const unsub = db.collection('allowlist').onSnapshot(q=>{
+            setAllowlist(q.docs.map(d=>({id:d.id, ...d.data()})));
+          });
+          return ()=>unsub&&unsub();
+        },[!!authUser, !!me, waitingApproval]);
+
+        // rooms
+        useEffect(()=>{
+          if(!authUser || !me || waitingApproval) return;
+          const unsub = db.collection('rooms').orderBy('name','asc').onSnapshot(q=>{
+            setRooms(q.docs.map(d=>({id:d.id, ...d.data()})));
+          });
+          return ()=>unsub&&unsub();
+        },[!!authUser, !!me, waitingApproval]);
+
+        // reservations (jen vybraný den pro tabulku níže)
+        useEffect(()=>{
+          if(!authUser || !me || waitingApproval) return;
+          const unsub = db.collection('reservations').where('dateISO','==',selectedIso).onSnapshot(q=>{
+            const dayMap = {};
+            q.docs.forEach(d=>{
+              const r = d.data();
+              dayMap[r.roomId] ??= {};
+              dayMap[r.roomId][r.period] = { teacherId:r.teacherId, note:r.note, createdBy:r.createdBy };
+            });
+            setReservations(dayMap);
+          });
+          return ()=>unsub&&unsub();
+        },[!!authUser, !!me, waitingApproval, selectedIso]);
+
+        // recurring (globální)
+        useEffect(()=>{
+          if(!authUser || !me || waitingApproval) return;
+          const unsub = db.collection('recurring').onSnapshot(q=>{
+            setRecurring(q.docs.map(d=>({id:d.id, ...d.data()})));
+          });
+          return ()=>unsub&&unsub();
+        },[!!authUser, !!me, waitingApproval]);
+
+        // --- Singles pro celý týden do horního náhledu ---
+        const [weeklySingles,setWeeklySingles]=useState({});
+        useEffect(()=>{
+          if(!authUser || !me || waitingApproval) return;
+          const unsub = db.collection('reservations')
+            .where('dateISO','>=',weekStartIso)
+            .where('dateISO','<=',weekEndIso)
+            .onSnapshot(q=>{
+              const map = {};
+              q.docs.forEach(d=>{
+                const r = d.data();
+                const iso = r.dateISO;
+                map[iso] ??= [];
+                map[iso].push({ period: r.period, roomId: r.roomId });
+              });
+              setWeeklySingles(map);
+            });
+          return ()=>unsub&&unsub();
+        },[!!authUser, !!me, waitingApproval, weekStartIso, weekEndIso]);
+
+        // occursOn
+        function occursOn(dateISO, rec){
+          if(cmpISO(dateISO, rec.startISO) < 0) return false;
+          const days = diffDays(dateISO, rec.startISO);
+          if(days % 7 !== 0) return false;
+          if(rec.mode==='weeks' && typeof rec.weeks==='number'){
+            const weekIndex = Math.floor(days/7);
+            return weekIndex >= 0 && weekIndex < rec.weeks;
+          }
+          if(rec.endISO && cmpISO(dateISO, rec.endISO) > 0) return false;
+          return true;
+        }
+
+        // effective plan
+        const effectivePlan = useMemo(()=>{
+          const plan = JSON.parse(JSON.stringify(reservations||{}));
+          (recurring||[]).forEach(r=>{
+            if(!occursOn(selectedIso, r)) return;
+            plan[r.roomId] ??= {};
+            if(!plan[r.roomId][r.period]){
+              plan[r.roomId][r.period] = {
+                teacherId:r.teacherId, note:r.note,
+                recurringId:r.id, allowElsewhere: !!r.allowElsewhere, createdBy:r.createdBy
+              };
+            }
+          });
+          return plan;
+        },[reservations, recurring, selectedIso]);
+
+        // CRUD rooms
+        const addRoom = async payload=>{
+          const body = { name:payload.name, floor:payload.floor, code:payload.code, type:payload.type, usage: payload.usage || 'hours' };
+          if(payload.type==='equipment'){ body.max = Math.max(1, Number(payload.max)||1); }
+          await db.collection('rooms').add(body);
+        };
+        const updateRoom = async (id, patch)=>{
+          const body = {...patch};
+          // nikdy neposílat undefined do Firestore
+          Object.keys(body).forEach(k=>{ if(body[k]===undefined) delete body[k]; });
+          if(body.type !== 'equipment'){ delete body.max; }
+          await db.collection('rooms').doc(id).set(body, {merge:true});
+        };
+        const removeRoom = async id => { await db.collection('rooms').doc(id).delete(); };
+
+        // CRUD reservations/recurring
+        async function upsertReservation(dateIso, roomId, period, payload, editingRecurringId=null){
+          const userId = authUser?.uid || 'unknown';
+          const teacherForSave = (me?.isAdmin) ? payload.teacherId : userId;
+          if(payload.repeat || editingRecurringId){
+            const origSnap = editingRecurringId ? await db.collection('recurring').doc(editingRecurringId).get() : null;
+            const seriesStartISO = (origSnap && origSnap.exists) ? origSnap.data().startISO : dateIso;
+
+            if(payload.repeat){
+              const q = await db.collection('reservations').where('dateISO','==',dateIso).where('roomId','==',roomId).where('period','==',period).get();
+              q.forEach(d=>d.ref.delete());
+
+              const rec = {
+                roomId, period,
+                teacherId: teacherForSave,
+                startISO: seriesStartISO,
+                note: payload.note || '',
+                createdBy: userId,
+                updatedAt: firebase.firestore.FieldValue.serverTimestamp(),
+              };
+if(payload.repeat.mode === 'until'){
+                rec.mode = 'until';
+                rec.endISO = schoolYearEndISO(parseISO(seriesStartISO));
+              } else {
+                const w = Math.max(1, Number(payload.repeat.weeks)||1);
+                rec.mode = 'weeks';
+                rec.weeks = w;
+                rec.endISO = toISO(addDays(parseISO(seriesStartISO), (w-1)*7));
+              }
+              if(typeof payload.repeat.allowElsewhere !== 'undefined'){
+                rec.allowElsewhere = !!payload.repeat.allowElsewhere;
+              }
+
+              if(editingRecurringId){
+                await db.collection('recurring').doc(editingRecurringId).set(rec, {merge:true});
+              }else{
+                rec.createdAt = firebase.firestore.FieldValue.serverTimestamp();
+                await db.collection('recurring').add(rec);
+              }
+            } else {
+              if(editingRecurringId){ await db.collection('recurring').doc(editingRecurringId).delete(); }
+              const single = {
+                dateISO: dateIso, roomId, period,
+                teacherId: teacherForSave,
+                note: payload.note || '',
+                createdBy: userId,
+                createdAt: firebase.firestore.FieldValue.serverTimestamp(),
+              };
+await db.collection('reservations').add(single);
+            }
+          } else {
+            const single = {
+              dateISO: dateIso, roomId, period,
+              teacherId: teacherForSave,
+              note: payload.note || '',
+              createdBy: userId,
+              createdAt: firebase.firestore.FieldValue.serverTimestamp(),
+            };
+await db.collection('reservations').add(single);
+          }
+        }
+
+        async function clearReservation(dateIso, roomId, period){
+          const q = await db.collection('reservations')
+            .where('dateISO','==',dateIso).where('roomId','==',roomId).where('period','==',period).get();
+          for(const d of q.docs) await d.ref.delete();
+        }
+        async function stopRecurring(id){ await db.collection('recurring').doc(id).delete(); }
+
+        const canUseApp = !!authUser && !!me && me.approved;
+        const isAdmin   = !!me?.isAdmin;
+
+        const openCell = (room, period)=>{
+          const cell = effectivePlan?.[room.id]?.[period];
+          const ownerId = cell?.createdBy;
+          const canEdit = !cell || isAdmin || (ownerId && authUser?.uid === ownerId);
+          if(!canEdit && cell) return;
+          if(cell){
+            if(cell.recurringId){
+              const rec = recurring.find(r=>r.id===cell.recurringId);
+              setDialog({dateIso:selectedIso, roomId:room.id, period, initial:cell, editingRecurringId:rec?.id});
+            } else {
+              setDialog({dateIso:selectedIso, roomId:room.id, period, initial:cell});
+            }
+          } else {
+            setDialog({dateIso:selectedIso, roomId:room.id, period});
+          }
+        };
+
+        // ---------- moje seznamy (jen pokud je uživatel schválen) ----------
+        useEffect(()=>{
+          if(!authUser || !me || waitingApproval) return;
+          const uid = authUser.uid;
+
+          // Bez orderBy => nepotřebuje composite index
+          const unsub1 = db.collection('reservations').where('createdBy','==',uid).onSnapshot(q=>{
+            const arr = q.docs.map(d=>({id:d.id, ...d.data()}));
+            arr.sort((a,b)=> (a.dateISO||'').localeCompare(b.dateISO||'') || String(a.period||'').localeCompare(String(b.period||'')));
+            setMySingles(arr);
+          });
+
+          const unsub2 = db.collection('recurring').where('createdBy','==',uid).onSnapshot(q=>{
+            const arr = q.docs.map(d=>({id:d.id, ...d.data()}));
+            arr.sort((a,b)=> (a.startISO||'').localeCompare(b.startISO||'') || String(a.period||'').localeCompare(String(b.period||'')));
+            setMyRecurring(arr);
+          });
+
+          return ()=>{ unsub1&&unsub1(); unsub2&&unsub2(); };
+        },[!!authUser, !!me, waitingApproval]);
+
+        // ---------- podmíněné obrazovky (po VŠECH hookách) ----------
+        if(loadingAuth){
+          return <div className="max-w-3xl mx-auto p-8">Načítám přihlášení…</div>;
+        }
+        if(!authUser){
+          return (
+            <div className="min-h-[70vh] flex items-center justify-center p-6">
+              <div className="bg-white/80 rounded-2xl shadow p-6 max-w-md w-full">
+                <h1 className="text-2xl font-bold mb-4">Rezervace Chromebooků a učeben</h1>
+                <p className="mb-4 text-gray-700">Pro pokračování se přihlas svým Google účtem.</p>
+                <button className="px-4 py-2 rounded-xl bg-black text-white w-full"
+                  onClick={()=>auth.signInWithPopup(new firebase.auth.GoogleAuthProvider())}>Přihlásit se Googlem</button>
+              </div>
+            </div>
+          );
+        }
+        if(authUser && !canUseApp){
+          return (
+            <div className="min-h-[70vh] flex items-center justify-center p-6">
+              <div className="bg-white/80 rounded-2xl shadow p-6 max-w-md w-full">
+                <h1 className="text-2xl font-bold mb-2">Účet čeká na schválení</h1>
+                <p className="text-gray-700">Tento účet zatím není schválený administrátorem.</p>
+                <div className="mt-4 text-sm text-gray-600">Přihlášen: {authUser.email}</div>
+                <div className="mt-6"><button className="px-3 py-2 rounded-xl border" onClick={()=>auth.signOut()}>Odhlásit</button></div>
+              </div>
+            </div>
+          );
+        }
+
+        // ---------- hlavní UI ----------
+        return (
+          <div className="p-4 max-w-7xl mx-auto grid gap-4">
+            <header className="flex items-center justify-between">
+              <h1 className="text-2xl font-bold">Rezervace Chromebooků a učeben</h1>
+              <div className="flex items-center gap-2">
+                <div className="inline-flex rounded-xl border overflow-hidden bg-white">
+                  <button className={`px-3 py-2 ${viewMode==='hours'?'bg-black text-white':'bg-white'}`} onClick={()=>setViewMode('hours')}>Hodiny</button>
+                  <button className={`px-3 py-2 ${viewMode==='breaks'?'bg-black text-white':'bg-white'}`} onClick={()=>setViewMode('breaks')}>Přestávky</button>
+                </div>
+
+                <button onClick={()=>setSelectedDate(addWeeks(selectedDate,-1))} className="px-3 py-2 rounded-xl border bg-white">◀ Týden</button>
+                <button onClick={()=>setDateModal(true)} className="px-3 py-2 rounded-xl border bg-white">📅 Datum</button>
+                <button onClick={()=>setSelectedDate(addWeeks(selectedDate,1))} className="px-3 py-2 rounded-xl border bg-white">Týden ▶</button>
+                {isAdmin && (<button onClick={()=>setShowSettings(s=>!s)} className="px-3 py-2 rounded-xl border bg-white">{showSettings?'Skrýt nastavení':'Nastavení'}</button>)}
+                <button onClick={()=>auth.signOut()} className="px-3 py-2 rounded-xl border bg-white">Odhlásit</button>
+              </div>
+            </header>
+
+            <DateModal open={dateModal} valueISO={toISO(selectedDate)} onClose={()=>setDateModal(false)} onChange={(v)=>v&&setSelectedDate(parseISO(v))}/>
+
+            {/* Týdenní panel (náhled ze singles + recurring) */}
+            <section className="bg-white/80 rounded-2xl p-4">
+              <div className="hidden sm:grid grid-cols-5 text-center text-xs font-medium text-gray-600 mb-2">{["Po","Út","St","Čt","Pá"].map((n,i)=><div key={i} className="py-1">{n}</div>)}</div>
+              <div className="sm:grid sm:grid-cols-5 gap-2 flex overflow-x-auto -mx-2 px-2">
+                {workweek.map(d=>{
+                  const sel = isSameDay(d, selectedDate);
+                  const iso = toISO(d);
+                  // singles z weeklySingles
+                  const allowedSet = new Set(visiblePeriods);
+                  const singles = (weeklySingles[iso]||[])
+                    .filter(r=>allowedSet.has(String(r.period)))
+                    .map(r=>({
+                      period:String(r.period),
+                      code:(rooms.find(x=>x.id===r.roomId)?.code||"?"),
+                      kind:'single'
+                    }));
+                  // recurring v ten den
+                  const recs = (recurring||[])
+                    .filter(r=>occursOn(iso,r) && allowedSet.has(String(r.period)))
+                    .map(r=>({
+                      period:String(r.period),
+                      code:(rooms.find(x=>x.id===r.roomId)?.code||"?"),
+                      kind: r.allowElsewhere ? 'rec-blue' : 'rec-amber'
+                    }));
+                  const items = [...singles, ...recs]
+                    .sort((a,b)=> periodOrder(a.period)-periodOrder(b.period) || a.code.localeCompare(b.code));
+                  return (
+                    <button key={d.toISOString()} onClick={()=>setSelectedDate(d)} className={`sm:h-28 h-24 sm:w-auto w-40 shrink-0 rounded-2xl border p-2 text-left bg-white hover:shadow ${sel?'ring-2 ring-fuchsia-400':''}`}>
+                      <div className="text-sm font-semibold">{shortDateCz(d)}</div>
+                      <div className="mt-1 flex flex-wrap gap-1">
+                        {items.length===0 ? <Badge className="bg-green-100 border border-green-400 text-green-800">volno</Badge>
+                          : items.map((it,idx)=>{
+                              let cls = "bg-red-100 border border-red-400 text-red-800";
+                              if(it.kind==='rec-blue') cls = "bg-blue-100 border border-blue-400 text-blue-800";
+                              if(it.kind==='rec-amber') cls = "bg-amber-100 border border-amber-400 text-amber-900";
+                              return <Badge key={idx} className={cls}>{periodLabelShort(it.period)} {it.code}</Badge>;
+                            })}
+                      </div>
+                    </button>
+                  );
+                })}
+              </div>
+            </section>
+
+            {/* Denní plán (effectivePlan = singles + recurring) */}
+            <section className="bg-white/80 rounded-2xl p-4">
+              <h2 className="text-lg font-semibold mb-2">{fullDateCz(selectedDate)}</h2>
+              <div className="-mx-2 sm:mx-0 overflow-x-auto">
+                <div className="min-w-[900px]">
+                  <table className="w-full text-sm">
+                    <thead><tr><th className="text-left p-2 sticky left-0 bg-white/90 backdrop-blur z-10">Učebna</th>{visiblePeriods.map(p=>
+                      <th key={p} className="p-2 min-w-28 text-center">{p}. hod.</th>
+                    )}</tr></thead>
+                    <tbody>
+                      {visibleRooms.map(room=>(
+                        <tr key={room.id} className="odd:bg-white/60 even:bg-white/40">
+                          <th className="text-left p-2 sticky left-0 bg-white/80 backdrop-blur z-10">
+                            <div className="font-medium">{room.name}</div>
+                            <div className="mt-0.5 flex gap-2 items-center text-xs text-gray-700">
+                              <span className="px-1.5 py-0.5 rounded bg-gray-100 border">{room.floor}</span>
+                            </div>
+                          </th>
+                          {visiblePeriods.map(p=>{
+                            const cell = effectivePlan?.[room.id]?.[p];
+                            const isRecurring = !!cell?.recurringId;
+                            const recurringBlue = isRecurring && cell?.allowElsewhere;
+                            const cls = !cell ? CELLCLS.free : isRecurring ? (recurringBlue ? CELLCLS.recBlue : CELLCLS.recAmber) : CELLCLS.single;
+                            const canDelete = isAdmin || (cell?.createdBy && authUser?.uid && cell.createdBy===authUser.uid);
+                            return (
+                              <td key={p} className="align-top p-1">
+                                <div className={`rounded-xl p-2 min-h-16 ${cls}`} onClick={()=>openCell(room, p)}>
+                                  {cell ? (
+                                    <div className="flex flex-col gap-1">
+                                      <div className="font-medium flex items-center gap-2">
+                                        {(teachers.find(t=>t.id===cell.teacherId)?.name) || '—'}
+                                      </div>
+                                      {cell.note && <div className="text-xs">{cell.note}</div>}
+                                      <div className="flex gap-2 mt-1">
+                                        {isRecurring ? (
+                                          canDelete ? <button className="px-2 py-1 rounded-lg border text-xs" onClick={(e)=>{e.stopPropagation(); stopRecurring(cell.recurringId);}}>Zrušit opak.</button> : null
+                                        ) : canDelete ? (
+                                          <button className="px-2 py-1 rounded-lg border text-xs" onClick={(e)=>{e.stopPropagation(); clearReservation(selectedIso, room.id, p);}}>Smazat</button>
+                                        ) : null}
+                                      </div>
+                                    </div>
+                                  ) : <span className="w-full text-left text-xs block text-green-900">+ Přidat</span>}
+                                </div>
+                              </td>
+                            );
+                          })}
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            </section>
+
+            {/* Moje přehledy – jen pro běžného uživatele (admin to nepotřebuje) */}
+            {!isAdmin && (
+              <section className="bg-white/80 rounded-2xl p-4 space-y-4">
+                <div>
+                  <button className="px-3 py-2 rounded-xl border" onClick={()=>setShowMyRecurring(v=>!v)}>
+                    {showMyRecurring ? 'Skrýt' : 'Zobrazit'} moje opakované rezervace
+                  </button>
+                  {showMyRecurring && (
+                    <div className="mt-3 space-y-2">
+                      {myRecurring.length===0 ? <div className="text-sm text-gray-600">Žádné opakované rezervace.</div>
+                        : myRecurring.map(r=>(
+                          <div key={r.id} className="rounded-xl border px-3 py-2"
+                               style={{backgroundColor: r.allowElsewhere ? 'rgba(191,219,254,0.5)' : 'rgba(253,230,138,0.5)'}}>
+                            <div className="text-sm">
+                              <span className="font-medium">{rooms.find(x=>x.id===r.roomId)?.name || '—'}</span>
+                              {' · hod. '}{r.period}
+                              
+                              {r.note ? ` · ${r.note}` : ''}
+                              <div className="text-xs text-gray-600">
+                                {r.mode==='weeks' ? `od ${r.startISO} (${r.weeks} týdnů)` : `od ${r.startISO} do ${r.endISO}`}
+                              </div>
+                            </div>
+                          </div>
+                        ))
+                      }
+                    </div>
+                  )}
+                </div>
+
+                <div>
+                  <button className="px-3 py-2 rounded-xl border" onClick={()=>setShowMySingles(v=>!v)}>
+                    {showMySingles ? 'Skrýt' : 'Zobrazit'} moje jednorázové rezervace
+                  </button>
+                  {showMySingles && (
+                    <div className="mt-3 space-y-2">
+                      {mySingles.length===0 ? <div className="text-sm text-gray-600">Žádné jednorázové rezervace.</div>
+                        : mySingles.map(s=>(
+                          <div key={s.id} className="rounded-xl border px-3 py-2 bg-white">
+                            <div className="text-sm">
+                              <span className="font-medium">{rooms.find(x=>x.id===s.roomId)?.name || '—'}</span>
+                              {' · '}{s.dateISO}{' · hod. '}{s.period}
+                              
+                              {s.note ? ` · ${s.note}` : ''}
+                            </div>
+                          </div>
+                        ))
+                      }
+                    </div>
+                  )}
+                </div>
+              </section>
+            )}
+
+            {/* Nastavení (jen admin) */}
+            {isAdmin && showSettings && (
+              <section className="bg-white/80 rounded-2xl p-4 grid grid-cols-1 lg:grid-cols-3 gap-4">
+                <div>
+                  <h2 className="text-lg font-semibold mb-2">Učitelé</h2>
+                  <div className="text-sm text-gray-600">Seznam učitelů vychází ze schválených uživatelů.</div>
+                  <div className="mt-2 flex flex-wrap gap-2">
+                    {teachers.map(t=>(
+                      <span key={t.id} className="inline-flex items-center gap-2 px-3 py-1 rounded-full border bg-white">{t.name}</span>
+                    ))}
+                  </div>
+                </div>
+
+                <div>
+                  <h2 className="text-lg font-semibold mb-2">Učebny / Pomůcky</h2>
+                  <div className="flex gap-2 mb-3">
+                    <button className="px-3 py-2 rounded-xl bg-black text-white" onClick={()=>setCreatingRoom(true)}>Přidat</button>
+                  </div>
+                  <div className="flex flex-col gap-2">
+                    {rooms.map(r=>(
+                      <div key={r.id}
+                           className="flex items-center justify-between rounded-xl border bg-white/70 px-3 py-2 cursor-pointer select-none"
+                           onClick={()=>setEditingRoom(r)}>
+                        <div>
+                          <div className="font-medium">{r.name}</div>
+                          <div className="mt-0.5 flex gap-2 items-center text-xs text-gray-700">
+                            <span className="px-1.5 py-0.5 rounded bg-gray-100 border">{r.code}</span>
+                            <span className="px-1.5 py-0.5 rounded bg-gray-100 border">{r.floor}</span>
+                            <span className="px-1.5 py-0.5 rounded bg-gray-100 border">{r.type==='equipment'?`pomůcka${r.max?` • max ${r.max}`:''}`:'učebna'}</span>
+                            <span className="px-1.5 py-0.5 rounded bg-gray-100 border">{(r.usage||'hours')==='hours'?'hodiny':(r.usage==='breaks'?'přestávky':'obojí')}</span>
+                          </div>
+                        </div>
+                        <button className="text-red-600 px-2 py-1 rounded-full hover:bg-red-50" title="Odebrat" onClick={async (e)=>{e.stopPropagation(); await db.collection('rooms').doc(r.id).delete();}}>✕</button>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+
+                <div>
+                  <h2 className="text-lg font-semibold mb-2">Uživatelé</h2>
+                  <div className="text-xs text-gray-600 mb-2">Schvalování a role. Níže uvidíš i e-maily z předschváleného seznamu (allowlist).</div>
+                  <div className="space-y-2 mb-4">
+                    {allUsers.map(u=>(
+                      <div key={u.id} className="flex items-center justify-between rounded-xl border bg-white px-3 py-2">
+                        <div className="text-sm">
+                          <div className="font-medium">{u.displayName || u.email}</div>
+                          <div className="text-xs text-gray-600">{u.email}</div>
+                        </div>
+                        <div className="flex items-center gap-2 text-sm">
+                          <label className="inline-flex items-center gap-1">
+                            <input type="checkbox" checked={!!u.approved} onChange={async (e)=>await db.collection('users').doc(u.id).set({approved:e.target.checked},{merge:true})}/>
+                            schválen
+                          </label>
+                          <label className="inline-flex items-center gap-1">
+                            <input type="checkbox" checked={!!u.isAdmin} onChange={async (e)=>await db.collection('users').doc(u.id).set({isAdmin:e.target.checked},{merge:true})}/>
+                            admin
+                          </label>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+
+                  {/* Allowlist bez účtu */}
+                  <div className="space-y-2">
+                    {allowlist
+                      .filter(a => !allUsers.some(u => (u.email||'').toLowerCase() === a.id.toLowerCase()))
+                      .map(a=>(
+                        <div key={a.id} className="flex items-center justify-between rounded-xl border px-3 py-2" style={{backgroundColor:'rgba(254,226,226,0.6)'}}>
+                          <div className="text-sm">
+                            <div className="font-medium">{a.id}</div>
+                            <div className="text-xs text-red-700">čeká na první přihlášení (předschválen)</div>
+                          </div>
+                          <button className="px-3 py-1 rounded-xl border" onClick={async ()=>{ await db.collection('allowlist').doc(a.id).delete(); }}>Odebrat</button>
+                        </div>
+                      ))
+                    }
+                  </div>
+
+                  <div className="mt-4">
+                    <h3 className="font-medium mb-2">Předschválit e-mail</h3>
+                    <AllowlistForm db={db}/>
+                  </div>
+                </div>
+              </section>
+            )}
+
+            {/* dialogy */}
+            <ReservationDialog
+              open={!!dialog}
+              onClose={()=>setDialog(null)}
+              teachers={teachers}
+              initial={dialog?.initial}
+              room={rooms.find(r=>r.id===dialog?.roomId)}
+              editingRecurring={dialog?.editingRecurringId ? recurring.find(r=>r.id===dialog.editingRecurringId) : null}
+              isAdmin={isAdmin}
+              currentUserId={authUser?.uid}
+              onSave={(payload)=> upsertReservation(dialog.dateIso, dialog.roomId, dialog.period, payload, dialog?.editingRecurringId||null)}
+            />
+            <RoomDialog
+              open={!!editingRoom}
+              initial={editingRoom}
+              onClose={()=>setEditingRoom(null)}
+              onSave={async (patch)=>{ await updateRoom(editingRoom.id, patch); setEditingRoom(null); }}
+            />
+            <RoomDialog
+              open={!!creatingRoom}
+              initial={null}
+              onClose={()=>setCreatingRoom(false)}
+              onSave={async (patch)=>{ await addRoom(patch); setCreatingRoom(false); }}
+            />
+          </div>
+        );
+      }
+
+      function AllowlistForm({db}){
+        const [email,setEmail]=useState("");
+        const [saving,setSaving]=useState(false);
+        return (
+          <div className="flex gap-2">
+            <input className="border rounded-xl px-3 py-2 flex-1" placeholder="ucitel@skola.cz" value={email} onChange={e=>setEmail(e.target.value)}/>
+            <button className="px-3 py-2 rounded-xl bg-black text-white" disabled={saving || !email.includes('@')}
+              onClick={async ()=>{
+                const key = email.trim().toLowerCase();
+                if(!key) return;
+                setSaving(true);
+                try{
+                  await db.collection('allowlist').doc(key).set({createdAt: firebase.firestore.FieldValue.serverTimestamp()},{merge:true});
+                  setEmail("");
+                } finally { setSaving(false); }
+              }}>Přidat</button>
+          </div>
+        );
+      }
+
+      ReactDOM.createRoot(document.getElementById('root')).render(<App/>);
+    </script>
+  </body>
 </html>
