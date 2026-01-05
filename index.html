@@ -43,7 +43,33 @@
         const endYear = (m >= 8 ? y+1 : y);
         return new Date(endYear, 5, 30).toISOString().slice(0,10);
       };
-      const PERIODS = ["0","1","2","3","4","5","6","7","8","9"];
+      const HOURS_PERIODS = ["0","1","2","3","4","5","6","7","8","9"];
+      const BREAKS = [
+        { id:"brk_before8", short:"Před 8", label:"Před 8. hodinou" },
+        { id:"brk_big",     short:"Velká", label:"Velká přestávka" },
+        { id:"brk_lunch1",  short:"Oběd 1", label:"Obědová přestávka 1" },
+        { id:"brk_lunch2",  short:"Oběd 2", label:"Obědová přestávka 2" },
+        { id:"brk_lunch3",  short:"Oběd 3", label:"Obědová přestávka 3" },
+        { id:"brk_after",   short:"Po", label:"Po hodinách" },
+      ];
+      const BREAK_PERIODS = BREAKS.map(b=>b.id);
+
+      const isHourPeriod = (p)=> /^[0-9]+$/.test(String(p));
+      const periodOrder = (p)=>{
+        if(isHourPeriod(p)) return Number(p);
+        const i = BREAKS.findIndex(b=>b.id===p);
+        return 100 + (i>=0? i: 99);
+      };
+      const periodLabelShort = (p)=>{
+        if(isHourPeriod(p)) return `${p}.`;
+        const b = BREAKS.find(x=>x.id===p);
+        return b ? b.short : String(p);
+      };
+      const periodLabel = (p)=>{
+        if(isHourPeriod(p)) return `${p}. hod.`;
+        const b = BREAKS.find(x=>x.id===p);
+        return b ? b.label : String(p);
+      };
       const Badge=({children,className=''})=> <span className={`inline-block text-[10px] px-1.5 py-0.5 rounded ${className}`}>{children}</span>;
       const CELLCLS = { free:'bg-green-100 border border-green-400', single:'bg-red-100 border border-red-400', recAmber:'bg-amber-100 border border-amber-400', recBlue:'bg-blue-100 border border-blue-400' };
 
@@ -78,10 +104,26 @@
       }
 
       function RoomDialog({open,initial,onClose,onSave}){
-        const [name,setName]=useState(""),[floor,setFloor]=useState(""),[code,setCode]=useState(""),
-              [type,setType]=useState("room"),[max,setMax]=useState(1);
-        useEffect(()=>{ if(open){ setName(initial?.name||""); setFloor(initial?.floor||""); setCode(initial?.code||""); setType(initial?.type||"room"); setMax(initial?.max||1);} },[open,initial]);
-        if(!open) return null; const isEquip = type === "equipment";
+        const [name,setName]=useState("");
+        const [floor,setFloor]=useState("");
+        const [code,setCode]=useState("");
+        const [type,setType]=useState("room");
+        const [max,setMax]=useState(1);
+        const [usage,setUsage]=useState("hours"); // 'hours' | 'both' | 'breaks'
+
+        useEffect(()=>{
+          if(!open) return;
+          setName(initial?.name||"");
+          setFloor(initial?.floor||"");
+          setCode(initial?.code||"");
+          setType(initial?.type||"room");
+          setMax(typeof initial?.max === 'number' ? initial.max : 1);
+          setUsage(initial?.usage || "hours");
+        },[open,initial]);
+
+        if(!open) return null;
+        const isEquip = type === "equipment";
+
         return (
           <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
             <div className="bg-white rounded-2xl shadow-xl w-full max-w-md p-4 max-h-[90vh] overflow-y-auto">
@@ -89,22 +131,51 @@
                 <h3 className="text-lg font-semibold">{initial?"Upravit místnost":"Nová místnost"}</h3>
                 <button onClick={onClose} className="p-2 rounded-full hover:bg-gray-100">✕</button>
               </div>
+
               <div className="grid grid-cols-6 gap-2">
                 <input className="col-span-3 border rounded-xl px-3 py-2" placeholder="Název" value={name} onChange={e=>setName(e.target.value)} />
                 <input className="col-span-2 border rounded-xl px-3 py-2" placeholder="Patro" value={floor} onChange={e=>setFloor(e.target.value)} />
                 <input className="col-span-1 border rounded-xl px-3 py-2" placeholder="Zkratka" value={code} onChange={e=>setCode(e.target.value)} />
+
                 <select className="col-span-3 border rounded-xl px-3 py-2" value={type} onChange={e=>setType(e.target.value)}>
                   <option value="room">Učebna</option>
                   <option value="equipment">Pomůcka</option>
                 </select>
-                <input className="col-span-3 border rounded-xl px-3 py-2" type="number" min="1" placeholder="Max. kusů" value={max} onChange={e=>setMax(Number(e.target.value)||1)} disabled={!isEquip}/>
+
+                <select className="col-span-3 border rounded-xl px-3 py-2" value={usage} onChange={e=>setUsage(e.target.value)}>
+                  <option value="hours">Pro hodiny</option>
+                  <option value="both">Obojí</option>
+                  <option value="breaks">Pro přestávky</option>
+                </select>
+
+                <input
+                  className="col-span-3 border rounded-xl px-3 py-2"
+                  type="number"
+                  min="1"
+                  placeholder="Max. kusů (jen pro pomůcky)"
+                  value={max}
+                  onChange={e=>setMax(Number(e.target.value)||1)}
+                  disabled={!isEquip}
+                />
+                <div className="col-span-3 text-xs text-gray-600 flex items-center">
+                  {isEquip ? "Max. kusů je jen informativní." : "Pro učebny se max neřeší."}
+                </div>
               </div>
+
               <div className="flex justify-end gap-2 mt-4">
                 <button onClick={onClose} className="px-3 py-2 rounded-xl border">Zrušit</button>
                 <button
                   onClick={()=>{
-                    const payload = { name: name.trim(), floor: floor.trim(), code: code.trim(), type };
-                    if (type === "equipment") { payload.max = Math.max(1, Number(max)||1); }
+                    const payload = {
+                      name: name.trim(),
+                      floor: floor.trim(),
+                      code: code.trim(),
+                      type,
+                      usage,
+                    };
+                    if(type === "equipment"){
+                      payload.max = Math.max(1, Number(max)||1);
+                    }
                     onSave(payload);
                   }}
                   className="px-3 py-2 rounded-xl bg-black text-white"
@@ -229,6 +300,8 @@
         const [selectedDate,setSelectedDate]=useState(new Date());
         const selectedIso = toISO(selectedDate);
 
+        const [viewMode,setViewMode]=useState('hours'); // 'hours' | 'breaks'
+
         // auth & role
         const [authUser,setAuthUser]=useState(null);
         const [me,setMe]=useState(null);
@@ -263,6 +336,15 @@
           const start = startOfWeek(selectedDate);
           return [0,1,2,3,4].map(off=>addDays(start,off));
         },[selectedDate]);
+
+
+        const visiblePeriods = useMemo(()=> (viewMode==='hours' ? HOURS_PERIODS : BREAK_PERIODS), [viewMode]);
+        const visibleRooms = useMemo(()=>{
+          return (rooms||[]).filter(r=>{
+            const u = r.usage || 'hours';
+            return viewMode==='hours' ? (u==='hours' || u==='both') : (u==='breaks' || u==='both');
+          });
+        }, [rooms, viewMode]);
 
         // Range ISO pro aktuální týden
         const weekStartIso = toISO(startOfWeek(selectedDate));
@@ -409,12 +491,14 @@
 
         // CRUD rooms
         const addRoom = async payload=>{
-          const body = { name:payload.name, floor:payload.floor, code:payload.code, type:payload.type };
+          const body = { name:payload.name, floor:payload.floor, code:payload.code, type:payload.type, usage: payload.usage || 'hours' };
           if(payload.type==='equipment'){ body.max = Math.max(1, Number(payload.max)||1); }
           await db.collection('rooms').add(body);
         };
         const updateRoom = async (id, patch)=>{
           const body = {...patch};
+          // nikdy neposílat undefined do Firestore
+          Object.keys(body).forEach(k=>{ if(body[k]===undefined) delete body[k]; });
           if(body.type !== 'equipment'){ delete body.max; }
           await db.collection('rooms').doc(id).set(body, {merge:true});
         };
@@ -565,6 +649,11 @@ await db.collection('reservations').add(single);
             <header className="flex items-center justify-between">
               <h1 className="text-2xl font-bold">Rezervace Chromebooků a učeben</h1>
               <div className="flex items-center gap-2">
+                <div className="inline-flex rounded-xl border overflow-hidden bg-white">
+                  <button className={`px-3 py-2 ${viewMode==='hours'?'bg-black text-white':'bg-white'}`} onClick={()=>setViewMode('hours')}>Hodiny</button>
+                  <button className={`px-3 py-2 ${viewMode==='breaks'?'bg-black text-white':'bg-white'}`} onClick={()=>setViewMode('breaks')}>Přestávky</button>
+                </div>
+
                 <button onClick={()=>setSelectedDate(addWeeks(selectedDate,-1))} className="px-3 py-2 rounded-xl border bg-white">◀ Týden</button>
                 <button onClick={()=>setDateModal(true)} className="px-3 py-2 rounded-xl border bg-white">📅 Datum</button>
                 <button onClick={()=>setSelectedDate(addWeeks(selectedDate,1))} className="px-3 py-2 rounded-xl border bg-white">Týden ▶</button>
@@ -583,17 +672,24 @@ await db.collection('reservations').add(single);
                   const sel = isSameDay(d, selectedDate);
                   const iso = toISO(d);
                   // singles z weeklySingles
-                  const singles = (weeklySingles[iso]||[]).map(r=>({
-                    period:r.period, code:(rooms.find(x=>x.id===r.roomId)?.code||"?"),
-                    kind:'single'
-                  }));
+                  const allowedSet = new Set(visiblePeriods);
+                  const singles = (weeklySingles[iso]||[])
+                    .filter(r=>allowedSet.has(String(r.period)))
+                    .map(r=>({
+                      period:String(r.period),
+                      code:(rooms.find(x=>x.id===r.roomId)?.code||"?"),
+                      kind:'single'
+                    }));
                   // recurring v ten den
-                  const recs = (recurring||[]).filter(r=>occursOn(iso,r)).map(r=>({
-                    period:r.period, code:(rooms.find(x=>x.id===r.roomId)?.code||"?"),
-                    kind: r.allowElsewhere ? 'rec-blue' : 'rec-amber'
-                  }));
+                  const recs = (recurring||[])
+                    .filter(r=>occursOn(iso,r) && allowedSet.has(String(r.period)))
+                    .map(r=>({
+                      period:String(r.period),
+                      code:(rooms.find(x=>x.id===r.roomId)?.code||"?"),
+                      kind: r.allowElsewhere ? 'rec-blue' : 'rec-amber'
+                    }));
                   const items = [...singles, ...recs]
-                    .sort((a,b)=> Number(a.period)-Number(b.period) || a.code.localeCompare(b.code));
+                    .sort((a,b)=> periodOrder(a.period)-periodOrder(b.period) || a.code.localeCompare(b.code));
                   return (
                     <button key={d.toISOString()} onClick={()=>setSelectedDate(d)} className={`sm:h-28 h-24 sm:w-auto w-40 shrink-0 rounded-2xl border p-2 text-left bg-white hover:shadow ${sel?'ring-2 ring-fuchsia-400':''}`}>
                       <div className="text-sm font-semibold">{shortDateCz(d)}</div>
@@ -603,7 +699,7 @@ await db.collection('reservations').add(single);
                               let cls = "bg-red-100 border border-red-400 text-red-800";
                               if(it.kind==='rec-blue') cls = "bg-blue-100 border border-blue-400 text-blue-800";
                               if(it.kind==='rec-amber') cls = "bg-amber-100 border border-amber-400 text-amber-900";
-                              return <Badge key={idx} className={cls}>{it.period}. {it.code}</Badge>;
+                              return <Badge key={idx} className={cls}>{periodLabelShort(it.period)} {it.code}</Badge>;
                             })}
                       </div>
                     </button>
@@ -618,11 +714,11 @@ await db.collection('reservations').add(single);
               <div className="-mx-2 sm:mx-0 overflow-x-auto">
                 <div className="min-w-[900px]">
                   <table className="w-full text-sm">
-                    <thead><tr><th className="text-left p-2 sticky left-0 bg-white/90 backdrop-blur z-10">Učebna</th>{PERIODS.map(p=>
+                    <thead><tr><th className="text-left p-2 sticky left-0 bg-white/90 backdrop-blur z-10">Učebna</th>{visiblePeriods.map(p=>
                       <th key={p} className="p-2 min-w-28 text-center">{p}. hod.</th>
                     )}</tr></thead>
                     <tbody>
-                      {rooms.map(room=>(
+                      {visibleRooms.map(room=>(
                         <tr key={room.id} className="odd:bg-white/60 even:bg-white/40">
                           <th className="text-left p-2 sticky left-0 bg-white/80 backdrop-blur z-10">
                             <div className="font-medium">{room.name}</div>
@@ -630,7 +726,7 @@ await db.collection('reservations').add(single);
                               <span className="px-1.5 py-0.5 rounded bg-gray-100 border">{room.floor}</span>
                             </div>
                           </th>
-                          {PERIODS.map(p=>{
+                          {visiblePeriods.map(p=>{
                             const cell = effectivePlan?.[room.id]?.[p];
                             const isRecurring = !!cell?.recurringId;
                             const recurringBlue = isRecurring && cell?.allowElsewhere;
@@ -748,6 +844,7 @@ await db.collection('reservations').add(single);
                             <span className="px-1.5 py-0.5 rounded bg-gray-100 border">{r.code}</span>
                             <span className="px-1.5 py-0.5 rounded bg-gray-100 border">{r.floor}</span>
                             <span className="px-1.5 py-0.5 rounded bg-gray-100 border">{r.type==='equipment'?`pomůcka${r.max?` • max ${r.max}`:''}`:'učebna'}</span>
+                            <span className="px-1.5 py-0.5 rounded bg-gray-100 border">{(r.usage||'hours')==='hours'?'hodiny':(r.usage==='breaks'?'přestávky':'obojí')}</span>
                           </div>
                         </div>
                         <button className="text-red-600 px-2 py-1 rounded-full hover:bg-red-50" title="Odebrat" onClick={async (e)=>{e.stopPropagation(); await db.collection('rooms').doc(r.id).delete();}}>✕</button>
