@@ -192,11 +192,11 @@
 
         const isRoom = room?.type==="room";
         const [repeatOn,setRepeatOn]=useState(!!editingRecurring);
-        const [repeatMode,setRepeatMode]=useState(editingRecurring?.mode || 'until');
+        const [repeatMode,setRepeatMode]=useState(editingRecurring?.mode || (isAdmin ? 'until' : 'weeks'));
         const [repeatWeeks,setRepeatWeeks]=useState(editingRecurring?.weeks || 4);
         const [allowElsewhere,setAllowElsewhere]=useState(!!editingRecurring?.allowElsewhere && isRoom);
 
-        useEffect(()=>{ if(open){ setRepeatOn(!!editingRecurring); setRepeatMode(editingRecurring?.mode||'until'); setRepeatWeeks(editingRecurring?.weeks||4); setAllowElsewhere(!!editingRecurring?.allowElsewhere && isRoom);} },[open,initial,room,editingRecurring]);
+        useEffect(()=>{ if(open){ setRepeatOn(!!editingRecurring); setRepeatMode(editingRecurring?.mode || (isAdmin ? 'until' : 'weeks')); setRepeatWeeks(editingRecurring?.weeks||4); setAllowElsewhere(!!editingRecurring?.allowElsewhere && isRoom);} },[open,initial,room,editingRecurring]);
         useEffect(()=>{ 
           if(open && !initial?.teacherId){
             setTeacherId(isAdmin ? (currentUserId || teachers[0]?.id || "") : (currentUserId || ""));
@@ -242,9 +242,9 @@
                   <div className="space-y-3">
                     <div className="text-sm">
                       <div className="mb-1">Délka opakování</div>
-                      <div className="inline-flex rounded-xl border overflow-hidden">
+                      <div className="inline-flex rounded-xl border overflow-hidden">{isAdmin && (
                         <button type="button" className={`px-3 py-1 ${repeatMode==='until' ? 'bg-black text-white':'bg-white'}`} onClick={()=>setRepeatMode('until')}>Do konce roku</button>
-                        <button type="button" className={`px-3 py-1 ${repeatMode==='weeks' ? 'bg-black text-white':'bg-white'}`} onClick={()=>setRepeatMode('weeks')}>Počet týdnů</button>
+                        )}<button type="button" className={`px-3 py-1 ${repeatMode==='weeks' ? 'bg-black text-white':'bg-white'}`} onClick={()=>setRepeatMode('weeks')}>Počet týdnů</button>
                       </div>
                     </div>
 
@@ -508,6 +508,10 @@
         async function upsertReservation(dateIso, roomId, period, payload, editingRecurringId=null){
           const userId = authUser?.uid || 'unknown';
           const teacherForSave = (me?.isAdmin) ? payload.teacherId : userId;
+          if(!me?.isAdmin && payload.repeat && payload.repeat.mode === 'until'){
+            alert('Opakování „do konce roku“ může vytvářet pouze administrátor. Zvol „Počet týdnů“, nebo požádej administrátora.');
+            return;
+          }
           if(payload.repeat || editingRecurringId){
             const origSnap = editingRecurringId ? await db.collection('recurring').doc(editingRecurringId).get() : null;
             const seriesStartISO = (origSnap && origSnap.exists) ? origSnap.data().startISO : dateIso;
