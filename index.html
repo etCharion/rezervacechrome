@@ -108,6 +108,31 @@
         );
       }
 
+      function DetailModal({detail,onClose,rooms,teachers}){
+        if(!detail) return null;
+        const room = rooms.find(r=>r.id===detail.roomId);
+        return (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40" onClick={onClose}>
+            <div className="bg-white rounded-2xl shadow-xl w-full max-w-sm p-4" onClick={e=>e.stopPropagation()}>
+              <div className="flex items-center justify-between mb-3">
+                <h3 className="text-lg font-semibold">Detail rezervace</h3>
+                <button onClick={onClose} className="p-2 rounded-full hover:bg-gray-100">✕</button>
+              </div>
+              <div className="text-sm space-y-1">
+                <div><span className="text-gray-600">Učebna/pomůcka:</span> <span className="font-medium">{room?.name || '—'}</span></div>
+                <div><span className="text-gray-600">Kdy:</span> {fullDateCz(parseISO(detail.dateIso))}, {periodLabel(detail.period)}</div>
+                <div><span className="text-gray-600">Rezervoval/a:</span> <span className="font-medium">{teachers.find(t=>t.id===detail.cell.teacherId)?.name || '—'}</span></div>
+                {detail.cell.note && <div><span className="text-gray-600">Poznámka:</span> {detail.cell.note}</div>}
+                {detail.rec
+                  ? <div><span className="text-gray-600">Typ:</span> opakovaná, každý týden {detail.rec.mode==='weeks' ? `(${detail.rec.weeks} týdnů od ${czFromISO(detail.rec.startISO)})` : `do ${czFromISO(detail.rec.endISO)}`}</div>
+                  : <div><span className="text-gray-600">Typ:</span> jednorázová</div>}
+              </div>
+              <div className="flex justify-end mt-4"><button onClick={onClose} className="px-3 py-2 rounded-xl border">Zavřít</button></div>
+            </div>
+          </div>
+        );
+      }
+
       function RoomDialog({open,initial,onClose,onSave}){
         const [name,setName]=useState("");
         const [floor,setFloor]=useState("");
@@ -343,6 +368,9 @@
         const [myRecurring,setMyRecurring]=useState([]);
         const [showMySingles,setShowMySingles]=useState(false);
         const [showMyRecurring,setShowMyRecurring]=useState(false);
+
+        // detail cizí rezervace (jen ke čtení)
+        const [detail,setDetail]=useState(null);
 
         // hooky, které musí být vždy volané
         const workweek = useMemo(()=>{
@@ -604,7 +632,11 @@ await db.collection('reservations').add(single);
           const cell = effectivePlan?.[room.id]?.[period];
           const ownerId = cell?.createdBy;
           const canEdit = !cell || isAdmin || (ownerId && authUser?.uid === ownerId);
-          if(!canEdit && cell) return;
+          if(!canEdit && cell){
+            const rec = cell.recurringId ? recurring.find(r=>r.id===cell.recurringId) : null;
+            setDetail({dateIso:selectedIso, roomId:room.id, period, cell, rec});
+            return;
+          }
           if(cell){
             if(cell.recurringId){
               const rec = recurring.find(r=>r.id===cell.recurringId);
@@ -951,6 +983,7 @@ await db.collection('reservations').add(single);
               onClose={()=>setCreatingRoom(false)}
               onSave={async (patch)=>{ await addRoom(patch); setCreatingRoom(false); }}
             />
+            <DetailModal detail={detail} onClose={()=>setDetail(null)} rooms={rooms} teachers={teachers}/>
           </div>
         );
       }
