@@ -485,7 +485,7 @@
             q.docs.forEach(d=>{
               const r = d.data();
               dayMap[r.roomId] ??= {};
-              dayMap[r.roomId][r.period] = { teacherId:r.teacherId, note:r.note, createdBy:r.createdBy };
+              dayMap[r.roomId][r.period] = { id:d.id, teacherId:r.teacherId, note:r.note, createdBy:r.createdBy };
             });
             setReservations(dayMap);
           });
@@ -566,11 +566,11 @@
         const removeRoom = async id => { await db.collection('rooms').doc(id).delete(); };
 
         // CRUD reservations/recurring
-        async function upsertReservation(dateIso, roomId, period, payload, editingRecurringId=null){
+        async function upsertReservation(dateIso, roomId, period, payload, editingRecurringId=null, existingSingleId=null){
           const userId = authUser?.uid || 'unknown';
           const teacherForSave = (me?.isAdmin) ? payload.teacherId : userId;
           if(!me?.isAdmin && payload.repeat && payload.repeat.mode === 'until'){
-            alert('Opakování „do konce roku“ může vytvářet pouze administrátor. Zvol „Počet týdnů“, nebo požádej administrátora.');
+            showToast('Opakování „do konce roku“ může vytvářet pouze administrátor. Zvol „Počet týdnů“, nebo požádej administrátora.');
             return;
           }
           if(payload.repeat || editingRecurringId){
@@ -578,8 +578,8 @@
             const seriesStartISO = (origSnap && origSnap.exists) ? origSnap.data().startISO : dateIso;
 
             if(payload.repeat){
-              const q = await db.collection('reservations').where('dateISO','==',dateIso).where('roomId','==',roomId).where('period','==',period).get();
-              q.forEach(d=>d.ref.delete());
+              // při převodu jednorázové na opakovanou se maže jen editovaný dokument
+              if(existingSingleId){ await db.collection('reservations').doc(existingSingleId).delete(); }
 
               const rec = {
                 roomId, period,
@@ -617,8 +617,15 @@ if(payload.repeat.mode === 'until'){
                 createdBy: userId,
                 createdAt: firebase.firestore.FieldValue.serverTimestamp(),
               };
-await db.collection('reservations').add(single);
+              await db.collection('reservations').add(single);
             }
+          } else if(existingSingleId){
+            // úprava existující jednorázové rezervace – update místo nového dokumentu
+            await db.collection('reservations').doc(existingSingleId).update({
+              teacherId: teacherForSave,
+              note: payload.note || '',
+              updatedAt: firebase.firestore.FieldValue.serverTimestamp(),
+            });
           } else {
             const single = {
               dateISO: dateIso, roomId, period,
@@ -627,7 +634,7 @@ await db.collection('reservations').add(single);
               createdBy: userId,
               createdAt: firebase.firestore.FieldValue.serverTimestamp(),
             };
-await db.collection('reservations').add(single);
+            await db.collection('reservations').add(single);
           }
         }
 
@@ -655,7 +662,7 @@ await db.collection('reservations').add(single);
               const rec = recurring.find(r=>r.id===cell.recurringId);
               setDialog({dateIso:selectedIso, roomId:room.id, period, initial:cell, editingRecurringId:rec?.id});
             } else {
-              setDialog({dateIso:selectedIso, roomId:room.id, period, initial:cell});
+              setDialog({dateIso:selectedIso, roomId:room.id, period, initial:cell, existingSingleId:cell.id});
             }
           } else {
             setDialog({dateIso:selectedIso, roomId:room.id, period});
@@ -987,7 +994,7 @@ await db.collection('reservations').add(single);
               editingRecurring={dialog?.editingRecurringId ? recurring.find(r=>r.id===dialog.editingRecurringId) : null}
               isAdmin={isAdmin}
               currentUserId={authUser?.uid}
-              onSave={(payload)=> guard(()=>upsertReservation(dialog.dateIso, dialog.roomId, dialog.period, payload, dialog?.editingRecurringId||null), 'Rezervaci se nepodařilo uložit')}
+              onSave={(payload)=> guard(()=>upsertReservation(dialog.dateIso, dialog.roomId, dialog.period, payload, dialog?.editingRecurringId||null, dialog?.existingSingleId||null), 'Rezervaci se nepodařilo uložit')}
             />
             <RoomDialog
               open={!!editingRoom}
