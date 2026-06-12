@@ -191,7 +191,7 @@
         );
       }
 
-      function ReservationDialog({open,onClose,onSave,teachers,initial,room,editingRecurring,isAdmin,currentUserId}){
+      function ReservationDialog({open,onClose,onSave,teachers,initial,room,dateIso,period,editingRecurring,isAdmin,currentUserId}){
         const [teacherId,setTeacherId]=useState(initial?.teacherId || (isAdmin ? (teachers.find(t=>t.id===currentUserId)?.id || teachers[0]?.id || "") : (currentUserId || "")));
         const [note,setNote]=useState(initial?.note||"");
 
@@ -213,8 +213,14 @@
           <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30">
             <div className="bg-white rounded-2xl shadow-xl w-full max-w-md p-4 max-h-[90vh] overflow-y-auto">
               <div className="flex items-center justify-between mb-3">
-                <h3 className="text-lg font-semibold">{editingRecurring?"Upravit opakování":"Nová rezervace"}</h3>
+                <h3 className="text-lg font-semibold">{editingRecurring?"Upravit opakování":(initial?"Upravit rezervaci":"Nová rezervace")}</h3>
                 <button onClick={onClose} className="p-2 rounded-full hover:bg-gray-100">✕</button>
+              </div>
+
+              <div className="text-sm text-gray-700 bg-gray-50 border rounded-xl px-3 py-2 mb-3">
+                <span className="font-medium">{room?.name || '—'}</span>
+                {' · '}{dateIso ? fullDateCz(parseISO(dateIso)) : ''}
+                {' · '}{periodLabel(period)}
               </div>
 
               {isAdmin ? (
@@ -924,6 +930,8 @@ await db.collection('reservations').add(single);
               teachers={teachers}
               initial={dialog?.initial}
               room={rooms.find(r=>r.id===dialog?.roomId)}
+              dateIso={dialog?.dateIso}
+              period={dialog?.period}
               editingRecurring={dialog?.editingRecurringId ? recurring.find(r=>r.id===dialog.editingRecurringId) : null}
               isAdmin={isAdmin}
               currentUserId={authUser?.uid}
