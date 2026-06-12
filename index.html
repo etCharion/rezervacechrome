@@ -765,6 +765,21 @@
           return ()=>{ unsubs.forEach(u=>u&&u()); };
         },[!!authUser, !!me, waitingApproval]);
 
+        // jen aktuální a budoucí položky pro „Moje rezervace“
+        const todayIso = toISO(new Date());
+        const mySinglesActive = useMemo(()=> mySingles.filter(s=> s.dateISO && cmpISO(s.dateISO, todayIso) >= 0), [mySingles, todayIso]);
+        const myRecurringActive = useMemo(()=> myRecurring.filter(r=> !r.endISO || cmpISO(r.endISO, todayIso) >= 0), [myRecurring, todayIso]);
+        // nejbližší budoucí výskyt série (kvůli prokliku na den)
+        const nextOccurrenceISO = (rec)=>{
+          let d = cmpISO(rec.startISO, todayIso) >= 0 ? rec.startISO : todayIso;
+          for(let i=0; i<60; i++){
+            if(occursOn(d, rec)) return d;
+            d = toISO(addDays(parseISO(d), 1));
+            if(rec.endISO && cmpISO(d, rec.endISO) > 0) return null;
+          }
+          return null;
+        };
+
         // ---------- podmíněné obrazovky (po VŠECH hookách) ----------
         if(loadingAuth){
           return <div className="max-w-3xl mx-auto p-8">Načítám přihlášení…</div>;
@@ -933,30 +948,37 @@
               </div>
             </section>
 
-            {/* Moje přehledy – jen pro běžného uživatele (admin to nepotřebuje) */}
-            {!isAdmin && (
-              <section className="bg-white/80 rounded-2xl p-4 space-y-4">
+            {/* Moje přehledy – zobrazují se jen aktuální a budoucí rezervace */}
+            <section className="bg-white/80 rounded-2xl p-4 space-y-4">
                 <div>
                   <button className="px-3 py-2 rounded-xl border" onClick={()=>setShowMyRecurring(v=>!v)}>
                     {showMyRecurring ? 'Skrýt' : 'Zobrazit'} moje opakované rezervace
                   </button>
                   {showMyRecurring && (
                     <div className="mt-3 space-y-2">
-                      {myRecurring.length===0 ? <div className="text-sm text-gray-600">Žádné opakované rezervace.</div>
-                        : myRecurring.map(r=>(
-                          <div key={r.id} className="rounded-xl border px-3 py-2"
+                      {myRecurringActive.length===0 ? <div className="text-sm text-gray-600">Žádné aktuální opakované rezervace.</div>
+                        : myRecurringActive.map(r=>{
+                          const next = nextOccurrenceISO(r);
+                          return (
+                          <div key={r.id} className="rounded-xl border px-3 py-2 cursor-pointer hover:shadow"
+                               title="Kliknutím zobrazíš den v kalendáři"
+                               onClick={()=>{ if(next) setSelectedDate(parseISO(next)); }}
                                style={{backgroundColor: r.allowElsewhere ? 'rgba(191,219,254,0.5)' : 'rgba(253,230,138,0.5)'}}>
-                            <div className="text-sm">
-                              <span className="font-medium">{rooms.find(x=>x.id===r.roomId)?.name || '—'}</span>
-                              {' · '}{periodLabel(r.period)}
-                              
-                              {r.note ? ` · ${r.note}` : ''}
-                              <div className="text-xs text-gray-600">
-                                {r.mode==='weeks' ? `od ${r.startISO} (${r.weeks} týdnů)` : `od ${r.startISO} do ${r.endISO}`}
+                            <div className="text-sm flex items-start justify-between gap-2">
+                              <div>
+                                <span className="font-medium">{rooms.find(x=>x.id===r.roomId)?.name || '—'}</span>
+                                {' · '}{periodLabel(r.period)}
+                                {r.note ? ` · ${r.note}` : ''}
+                                <div className="text-xs text-gray-600">
+                                  {r.mode==='weeks' ? `od ${czFromISO(r.startISO)} (${r.weeks} týdnů)` : `od ${czFromISO(r.startISO)} do ${czFromISO(r.endISO)}`}
+                                  {next ? ` · nejbližší výskyt ${czFromISO(next)}` : ''}
+                                </div>
                               </div>
+                              <button className="px-2 py-1 rounded-lg border text-xs bg-white shrink-0"
+                                onClick={(e)=>{e.stopPropagation(); if(window.confirm('Opravdu zrušit CELÉ opakování? Zruší se všechny týdny této série.')) guard(()=>stopRecurring(r.id), 'Opakování se nepodařilo zrušit');}}>Zrušit opak.</button>
                             </div>
                           </div>
-                        ))
+                        );})
                       }
                     </div>
                   )}
@@ -968,14 +990,19 @@
                   </button>
                   {showMySingles && (
                     <div className="mt-3 space-y-2">
-                      {mySingles.length===0 ? <div className="text-sm text-gray-600">Žádné jednorázové rezervace.</div>
-                        : mySingles.map(s=>(
-                          <div key={s.id} className="rounded-xl border px-3 py-2 bg-white">
-                            <div className="text-sm">
-                              <span className="font-medium">{rooms.find(x=>x.id===s.roomId)?.name || '—'}</span>
-                              {' · '}{s.dateISO}{' · '}{periodLabel(s.period)}
-                              
-                              {s.note ? ` · ${s.note}` : ''}
+                      {mySinglesActive.length===0 ? <div className="text-sm text-gray-600">Žádné aktuální jednorázové rezervace.</div>
+                        : mySinglesActive.map(s=>(
+                          <div key={s.id} className="rounded-xl border px-3 py-2 bg-white cursor-pointer hover:shadow"
+                               title="Kliknutím zobrazíš den v kalendáři"
+                               onClick={()=>setSelectedDate(parseISO(s.dateISO))}>
+                            <div className="text-sm flex items-start justify-between gap-2">
+                              <div>
+                                <span className="font-medium">{rooms.find(x=>x.id===s.roomId)?.name || '—'}</span>
+                                {' · '}{czFromISO(s.dateISO)}{' · '}{periodLabel(s.period)}
+                                {s.note ? ` · ${s.note}` : ''}
+                              </div>
+                              <button className="px-2 py-1 rounded-lg border text-xs shrink-0"
+                                onClick={(e)=>{e.stopPropagation(); if(window.confirm('Opravdu smazat tuto rezervaci?')) guard(()=>db.collection('reservations').doc(s.id).delete(), 'Rezervaci se nepodařilo smazat');}}>Smazat</button>
                             </div>
                           </div>
                         ))
@@ -983,8 +1010,7 @@
                     </div>
                   )}
                 </div>
-              </section>
-            )}
+            </section>
 
             {/* Nastavení (jen admin) */}
             {isAdmin && showSettings && (
