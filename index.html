@@ -29,8 +29,12 @@
       const { useState, useEffect, useMemo } = React;
 
       // ---------- util ----------
-      const toISO = d => new Date(d.getFullYear(), d.getMonth(), d.getDate()).toISOString().slice(0,10);
+      // Pozor: nikdy nepřevádět lokální datum přes toISOString() – pracuje v UTC
+      // a v pásmu UTC+1/+2 vrací předchozí den.
+      const pad2 = n => String(n).padStart(2,'0');
+      const toISO = d => `${d.getFullYear()}-${pad2(d.getMonth()+1)}-${pad2(d.getDate())}`;
       const parseISO = s => { const [y,m,dd]=s.split('-').map(Number); return new Date(y, m-1, dd); };
+      const czFromISO = s => s ? parseISO(s).toLocaleDateString('cs-CZ', { day:'numeric', month:'numeric', year:'numeric' }) : '';
       const addDays = (d,n)=>{ const x=new Date(d); x.setDate(x.getDate()+n); return x; };
       const addWeeks = (d,n)=> addDays(d, n*7);
       const startOfWeek = d => { const iso = d.getDay() || 7; return addDays(new Date(d.getFullYear(), d.getMonth(), d.getDate()), -(iso-1)); };
@@ -42,7 +46,7 @@
       const schoolYearEndISO = (date)=>{
         const y = date.getFullYear(), m = date.getMonth();
         const endYear = (m >= 8 ? y+1 : y);
-        return new Date(endYear, 5, 30).toISOString().slice(0,10);
+        return `${endYear}-06-30`;
       };
       const HOURS_PERIODS = ["0","1","2","3","4","5","6","7","8","9"];
       const BREAKS = [
