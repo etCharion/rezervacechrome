@@ -810,9 +810,12 @@
                   <button className={`px-3 py-2 ${viewMode==='breaks'?'bg-black text-white':'bg-white'}`} onClick={()=>setViewMode('breaks')}>Přestávky</button>
                 </div>
 
-                <button onClick={()=>setSelectedDate(addWeeks(selectedDate,-1))} className="px-3 py-2 rounded-xl border bg-white">◀ Týden</button>
+                <button onClick={()=>setSelectedDate(addWeeks(selectedDate,-1))} title="Předchozí týden" className="px-3 py-2 rounded-xl border bg-white">◀◀</button>
+                <button onClick={()=>setSelectedDate(addDays(selectedDate,-1))} title="Předchozí den" className="px-3 py-2 rounded-xl border bg-white">◀</button>
+                <button onClick={()=>setSelectedDate(new Date())} className="px-3 py-2 rounded-xl border bg-white">Dnes</button>
                 <button onClick={()=>setDateModal(true)} className="px-3 py-2 rounded-xl border bg-white">📅 Datum</button>
-                <button onClick={()=>setSelectedDate(addWeeks(selectedDate,1))} className="px-3 py-2 rounded-xl border bg-white">Týden ▶</button>
+                <button onClick={()=>setSelectedDate(addDays(selectedDate,1))} title="Další den" className="px-3 py-2 rounded-xl border bg-white">▶</button>
+                <button onClick={()=>setSelectedDate(addWeeks(selectedDate,1))} title="Další týden" className="px-3 py-2 rounded-xl border bg-white">▶▶</button>
                 {isAdmin && (<button onClick={()=>setShowSettings(s=>!s)} className="px-3 py-2 rounded-xl border bg-white">{showSettings?'Skrýt nastavení':'Nastavení'}</button>)}
                 <button onClick={()=>auth.signOut()} className="px-3 py-2 rounded-xl border bg-white">Odhlásit</button>
               </div>
@@ -826,6 +829,7 @@
               <div className="sm:grid sm:grid-cols-5 gap-2 flex overflow-x-auto -mx-2 px-2">
                 {workweek.map(d=>{
                   const sel = isSameDay(d, selectedDate);
+                  const isToday = isSameDay(d, new Date());
                   const iso = toISO(d);
                   // singles z weeklySingles
                   const allowedSet = new Set(visiblePeriods);
@@ -847,8 +851,8 @@
                   const items = [...singles, ...recs]
                     .sort((a,b)=> periodOrder(a.period)-periodOrder(b.period) || a.code.localeCompare(b.code));
                   return (
-                    <button key={d.toISOString()} onClick={()=>setSelectedDate(d)} className={`sm:h-28 h-24 sm:w-auto w-40 shrink-0 rounded-2xl border p-2 text-left bg-white hover:shadow ${sel?'ring-2 ring-fuchsia-400':''}`}>
-                      <div className="text-sm font-semibold">{shortDateCz(d)}</div>
+                    <button key={toISO(d)} onClick={()=>setSelectedDate(d)} className={`sm:h-28 h-24 sm:w-auto w-40 shrink-0 rounded-2xl border p-2 text-left bg-white hover:shadow ${sel?'ring-2 ring-fuchsia-400':''} ${isToday?'border-fuchsia-500 border-2':''}`}>
+                      <div className={`text-sm font-semibold ${isToday?'text-fuchsia-700':''}`}>{shortDateCz(d)}{isToday?' · dnes':''}</div>
                       <div className="mt-1 flex flex-wrap gap-1">
                         {items.length===0 ? <Badge className="bg-green-100 border border-green-400 text-green-800">volno</Badge>
                           : items.map((it,idx)=>{
