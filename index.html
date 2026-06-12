@@ -460,14 +460,14 @@
           return ()=>unsub&&unsub();
         },[!!authUser, !!me, waitingApproval]);
 
-        // allowlist (pro zobrazení v nastavení)
+        // allowlist (pro zobrazení v nastavení) – security rules dovolují výpis jen adminovi
         useEffect(()=>{
-          if(!authUser || !me || waitingApproval) return;
+          if(!authUser || !me || waitingApproval || !me.isAdmin) return;
           const unsub = db.collection('allowlist').onSnapshot(q=>{
             setAllowlist(q.docs.map(d=>({id:d.id, ...d.data()})));
           });
           return ()=>unsub&&unsub();
-        },[!!authUser, !!me, waitingApproval]);
+        },[!!authUser, !!me, waitingApproval, !!me?.isAdmin]);
 
         // rooms
         useEffect(()=>{
