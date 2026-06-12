@@ -891,9 +891,9 @@
                                       {cell.note && <div className="text-xs">{cell.note}</div>}
                                       <div className="flex gap-2 mt-1">
                                         {isRecurring ? (
-                                          canDelete ? <button className="px-2 py-1 rounded-lg border text-xs" onClick={(e)=>{e.stopPropagation(); guard(()=>stopRecurring(cell.recurringId), 'Opakování se nepodařilo zrušit');}}>Zrušit opak.</button> : null
+                                          canDelete ? <button className="px-2 py-1 rounded-lg border text-xs" onClick={(e)=>{e.stopPropagation(); if(window.confirm('Opravdu zrušit CELÉ opakování? Zruší se všechny týdny této série.')) guard(()=>stopRecurring(cell.recurringId), 'Opakování se nepodařilo zrušit');}}>Zrušit opak.</button> : null
                                         ) : canDelete ? (
-                                          <button className="px-2 py-1 rounded-lg border text-xs" onClick={(e)=>{e.stopPropagation(); guard(()=>clearReservation(selectedIso, room.id, p), 'Rezervaci se nepodařilo smazat');}}>Smazat</button>
+                                          <button className="px-2 py-1 rounded-lg border text-xs" onClick={(e)=>{e.stopPropagation(); if(window.confirm('Opravdu smazat tuto rezervaci?')) guard(()=>clearReservation(selectedIso, room.id, p), 'Rezervaci se nepodařilo smazat');}}>Smazat</button>
                                         ) : null}
                                       </div>
                                     </div>
@@ -995,7 +995,7 @@
                             <span className="px-1.5 py-0.5 rounded bg-gray-100 border">{(r.usage||'hours')==='hours'?'hodiny':(r.usage==='breaks'?'přestávky':'obojí')}</span>
                           </div>
                         </div>
-                        <button className="text-red-600 px-2 py-1 rounded-full hover:bg-red-50" title="Odebrat" onClick={(e)=>{e.stopPropagation(); guard(()=>removeRoom(r.id), 'Místnost se nepodařilo odebrat');}}>✕</button>
+                        <button className="text-red-600 px-2 py-1 rounded-full hover:bg-red-50" title="Odebrat" onClick={(e)=>{e.stopPropagation(); if(window.confirm(`Opravdu odebrat „${r.name}“?`)) guard(()=>removeRoom(r.id), 'Místnost se nepodařilo odebrat');}}>✕</button>
                       </div>
                     ))}
                   </div>
