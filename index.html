@@ -355,40 +355,47 @@
         const weekStartIso = toISO(startOfWeek(selectedDate));
         const weekEndIso = toISO(addDays(startOfWeek(selectedDate), 4));
 
-        // auth
+        // auth – vlastní dokument sledujeme přes onSnapshot, aby se schválení
+        // nebo změna role projevily okamžitě bez nového přihlášení
         useEffect(()=>{
+          let unsubMe = null;
           const unsub = auth.onAuthStateChanged(async (u)=>{
+            if(unsubMe){ unsubMe(); unsubMe = null; }
             setAuthUser(u);
             if(!u){ setMe(null); setWaitingApproval(false); setLoadingAuth(false); return; }
 
             const ref = db.collection('users').doc(u.uid);
-            const snap = await ref.get();
-            const isBootstrapAdmin = (u.email === 'dgunka@gymnaziumbma.cz');
+            try{
+              const snap = await ref.get();
+              const isBootstrapAdmin = (u.email === 'dgunka@gymnaziumbma.cz');
 
-            if(!snap.exists){
-              let preapproved=false;
-              try{
-                const allowSnap = await db.collection('allowlist').doc((u.email||'').toLowerCase()).get();
-                preapproved = allowSnap.exists;
-              }catch{}
-              await ref.set({
-                email: u.email || '',
-                displayName: u.displayName || (u.email? u.email.split('@')[0] : 'Uživatel'),
-                isAdmin: isBootstrapAdmin,
-                approved: isBootstrapAdmin || preapproved,
-                createdAt: firebase.firestore.FieldValue.serverTimestamp()
-              }, {merge:true});
-            } else if (isBootstrapAdmin){
-              await ref.set({ isAdmin:true, approved:true }, {merge:true});
-            }
+              if(!snap.exists){
+                let preapproved=false;
+                try{
+                  const allowSnap = await db.collection('allowlist').doc((u.email||'').toLowerCase()).get();
+                  preapproved = allowSnap.exists;
+                }catch{}
+                await ref.set({
+                  email: u.email || '',
+                  displayName: u.displayName || (u.email? u.email.split('@')[0] : 'Uživatel'),
+                  isAdmin: isBootstrapAdmin,
+                  approved: isBootstrapAdmin || preapproved,
+                  createdAt: firebase.firestore.FieldValue.serverTimestamp()
+                }, {merge:true});
+              } else if (isBootstrapAdmin && (!snap.data().isAdmin || !snap.data().approved)){
+                await ref.set({ isAdmin:true, approved:true }, {merge:true});
+              }
+            }catch(err){ console.error(err); }
 
-            const snap2 = await ref.get();
-            const data = snap2.data();
-            setMe(data);
-            setWaitingApproval(!data.approved);
-            setLoadingAuth(false);
+            unsubMe = ref.onSnapshot(s=>{
+              const data = s.data();
+              if(!data) return;
+              setMe(data);
+              setWaitingApproval(!data.approved);
+              setLoadingAuth(false);
+            }, err=>{ console.error(err); setLoadingAuth(false); });
           });
-          return ()=>unsub&&unsub();
+          return ()=>{ unsub&&unsub(); unsubMe&&unsubMe(); };
         },[]);
 
         // users -> teachers
