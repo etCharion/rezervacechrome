@@ -372,6 +372,19 @@
         // detail cizí rezervace (jen ke čtení)
         const [detail,setDetail]=useState(null);
 
+        // chybová/informační hláška
+        const [toast,setToast]=useState(null);
+        const showToast = (msg, kind='error')=>{
+          setToast({msg, kind});
+          window.clearTimeout(showToast._t);
+          showToast._t = window.setTimeout(()=>setToast(null), 6000);
+        };
+        // obal pro zápisy do Firestore – při selhání zobrazí hlášku
+        const guard = async (fn, failMsg)=>{
+          try{ await fn(); }
+          catch(err){ console.error(err); showToast(`${failMsg} (${err?.message || err})`); }
+        };
+
         // hooky, které musí být vždy volané
         const workweek = useMemo(()=>{
           const start = startOfWeek(selectedDate);
@@ -702,6 +715,11 @@ await db.collection('reservations').add(single);
         // ---------- hlavní UI ----------
         return (
           <div className="p-4 max-w-7xl mx-auto grid gap-4">
+            {toast && (
+              <div className={`fixed bottom-4 left-1/2 -translate-x-1/2 z-[60] px-4 py-2 rounded-xl shadow-lg text-sm max-w-md ${toast.kind==='error'?'bg-red-600 text-white':'bg-emerald-600 text-white'}`}>
+                {toast.msg}
+              </div>
+            )}
             <header className="flex items-center justify-between">
               <h1 className="text-2xl font-bold">Rezervace Chromebooků a učeben</h1>
               <div className="flex items-center gap-2">
@@ -799,9 +817,9 @@ await db.collection('reservations').add(single);
                                       {cell.note && <div className="text-xs">{cell.note}</div>}
                                       <div className="flex gap-2 mt-1">
                                         {isRecurring ? (
-                                          canDelete ? <button className="px-2 py-1 rounded-lg border text-xs" onClick={(e)=>{e.stopPropagation(); stopRecurring(cell.recurringId);}}>Zrušit opak.</button> : null
+                                          canDelete ? <button className="px-2 py-1 rounded-lg border text-xs" onClick={(e)=>{e.stopPropagation(); guard(()=>stopRecurring(cell.recurringId), 'Opakování se nepodařilo zrušit');}}>Zrušit opak.</button> : null
                                         ) : canDelete ? (
-                                          <button className="px-2 py-1 rounded-lg border text-xs" onClick={(e)=>{e.stopPropagation(); clearReservation(selectedIso, room.id, p);}}>Smazat</button>
+                                          <button className="px-2 py-1 rounded-lg border text-xs" onClick={(e)=>{e.stopPropagation(); guard(()=>clearReservation(selectedIso, room.id, p), 'Rezervaci se nepodařilo smazat');}}>Smazat</button>
                                         ) : null}
                                       </div>
                                     </div>
@@ -903,7 +921,7 @@ await db.collection('reservations').add(single);
                             <span className="px-1.5 py-0.5 rounded bg-gray-100 border">{(r.usage||'hours')==='hours'?'hodiny':(r.usage==='breaks'?'přestávky':'obojí')}</span>
                           </div>
                         </div>
-                        <button className="text-red-600 px-2 py-1 rounded-full hover:bg-red-50" title="Odebrat" onClick={async (e)=>{e.stopPropagation(); await db.collection('rooms').doc(r.id).delete();}}>✕</button>
+                        <button className="text-red-600 px-2 py-1 rounded-full hover:bg-red-50" title="Odebrat" onClick={(e)=>{e.stopPropagation(); guard(()=>removeRoom(r.id), 'Místnost se nepodařilo odebrat');}}>✕</button>
                       </div>
                     ))}
                   </div>
@@ -921,11 +939,11 @@ await db.collection('reservations').add(single);
                         </div>
                         <div className="flex items-center gap-2 text-sm">
                           <label className="inline-flex items-center gap-1">
-                            <input type="checkbox" checked={!!u.approved} onChange={async (e)=>await db.collection('users').doc(u.id).set({approved:e.target.checked},{merge:true})}/>
+                            <input type="checkbox" checked={!!u.approved} onChange={(e)=>guard(()=>db.collection('users').doc(u.id).set({approved:e.target.checked},{merge:true}), 'Změnu se nepodařilo uložit')}/>
                             schválen
                           </label>
                           <label className="inline-flex items-center gap-1">
-                            <input type="checkbox" checked={!!u.isAdmin} onChange={async (e)=>await db.collection('users').doc(u.id).set({isAdmin:e.target.checked},{merge:true})}/>
+                            <input type="checkbox" checked={!!u.isAdmin} onChange={(e)=>guard(()=>db.collection('users').doc(u.id).set({isAdmin:e.target.checked},{merge:true}), 'Změnu se nepodařilo uložit')}/>
                             admin
                           </label>
                         </div>
@@ -943,7 +961,7 @@ await db.collection('reservations').add(single);
                             <div className="font-medium">{a.id}</div>
                             <div className="text-xs text-red-700">čeká na první přihlášení (předschválen)</div>
                           </div>
-                          <button className="px-3 py-1 rounded-xl border" onClick={async ()=>{ await db.collection('allowlist').doc(a.id).delete(); }}>Odebrat</button>
+                          <button className="px-3 py-1 rounded-xl border" onClick={()=>guard(()=>db.collection('allowlist').doc(a.id).delete(), 'E-mail se nepodařilo odebrat')}>Odebrat</button>
                         </div>
                       ))
                     }
@@ -951,7 +969,7 @@ await db.collection('reservations').add(single);
 
                   <div className="mt-4">
                     <h3 className="font-medium mb-2">Předschválit e-mail</h3>
-                    <AllowlistForm db={db}/>
+                    <AllowlistForm db={db} onError={(m)=>showToast(m)}/>
                   </div>
                 </div>
               </section>
@@ -969,26 +987,26 @@ await db.collection('reservations').add(single);
               editingRecurring={dialog?.editingRecurringId ? recurring.find(r=>r.id===dialog.editingRecurringId) : null}
               isAdmin={isAdmin}
               currentUserId={authUser?.uid}
-              onSave={(payload)=> upsertReservation(dialog.dateIso, dialog.roomId, dialog.period, payload, dialog?.editingRecurringId||null)}
+              onSave={(payload)=> guard(()=>upsertReservation(dialog.dateIso, dialog.roomId, dialog.period, payload, dialog?.editingRecurringId||null), 'Rezervaci se nepodařilo uložit')}
             />
             <RoomDialog
               open={!!editingRoom}
               initial={editingRoom}
               onClose={()=>setEditingRoom(null)}
-              onSave={async (patch)=>{ await updateRoom(editingRoom.id, patch); setEditingRoom(null); }}
+              onSave={async (patch)=>{ await guard(()=>updateRoom(editingRoom.id, patch), 'Místnost se nepodařilo uložit'); setEditingRoom(null); }}
             />
             <RoomDialog
               open={!!creatingRoom}
               initial={null}
               onClose={()=>setCreatingRoom(false)}
-              onSave={async (patch)=>{ await addRoom(patch); setCreatingRoom(false); }}
+              onSave={async (patch)=>{ await guard(()=>addRoom(patch), 'Místnost se nepodařilo přidat'); setCreatingRoom(false); }}
             />
             <DetailModal detail={detail} onClose={()=>setDetail(null)} rooms={rooms} teachers={teachers}/>
           </div>
         );
       }
 
-      function AllowlistForm({db}){
+      function AllowlistForm({db,onError}){
         const [email,setEmail]=useState("");
         const [saving,setSaving]=useState(false);
         return (
@@ -1002,7 +1020,8 @@ await db.collection('reservations').add(single);
                 try{
                   await db.collection('allowlist').doc(key).set({createdAt: firebase.firestore.FieldValue.serverTimestamp()},{merge:true});
                   setEmail("");
-                } finally { setSaving(false); }
+                } catch(err){ console.error(err); onError && onError(`E-mail se nepodařilo předschválit (${err?.message || err})`); }
+                finally { setSaving(false); }
               }}>Přidat</button>
           </div>
         );
