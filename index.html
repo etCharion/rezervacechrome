@@ -524,6 +524,8 @@
         // occursOn
         function occursOn(dateISO, rec){
           if(cmpISO(dateISO, rec.startISO) < 0) return false;
+          // zrušené jednotlivé výskyty série
+          if(Array.isArray(rec.exceptions) && rec.exceptions.includes(dateISO)) return false;
           const days = diffDays(dateISO, rec.startISO);
           if(days % 7 !== 0) return false;
           if(rec.mode==='weeks' && typeof rec.weeks==='number'){
@@ -689,6 +691,12 @@
           for(const d of q.docs) await d.ref.delete();
         }
         async function stopRecurring(id){ await db.collection('recurring').doc(id).delete(); }
+        // zruší jediný výskyt série (přidá den do výjimek)
+        async function skipOccurrence(recId, dateIso){
+          await db.collection('recurring').doc(recId).update({
+            exceptions: firebase.firestore.FieldValue.arrayUnion(dateIso),
+          });
+        }
 
         const canUseApp = !!authUser && !!me && me.approved;
         const isAdmin   = !!me?.isAdmin;
@@ -891,7 +899,12 @@
                                       {cell.note && <div className="text-xs">{cell.note}</div>}
                                       <div className="flex gap-2 mt-1">
                                         {isRecurring ? (
-                                          canDelete ? <button className="px-2 py-1 rounded-lg border text-xs" onClick={(e)=>{e.stopPropagation(); if(window.confirm('Opravdu zrušit CELÉ opakování? Zruší se všechny týdny této série.')) guard(()=>stopRecurring(cell.recurringId), 'Opakování se nepodařilo zrušit');}}>Zrušit opak.</button> : null
+                                          canDelete ? (
+                                            <React.Fragment>
+                                              <button className="px-2 py-1 rounded-lg border text-xs" onClick={(e)=>{e.stopPropagation(); if(window.confirm('Zrušit rezervaci jen pro tento den? Ostatní týdny série zůstanou.')) guard(()=>skipOccurrence(cell.recurringId, selectedIso), 'Výskyt se nepodařilo zrušit');}}>Zrušit tento den</button>
+                                              <button className="px-2 py-1 rounded-lg border text-xs" onClick={(e)=>{e.stopPropagation(); if(window.confirm('Opravdu zrušit CELÉ opakování? Zruší se všechny týdny této série.')) guard(()=>stopRecurring(cell.recurringId), 'Opakování se nepodařilo zrušit');}}>Zrušit opak.</button>
+                                            </React.Fragment>
+                                          ) : null
                                         ) : canDelete ? (
                                           <button className="px-2 py-1 rounded-lg border text-xs" onClick={(e)=>{e.stopPropagation(); if(window.confirm('Opravdu smazat tuto rezervaci?')) guard(()=>clearReservation(selectedIso, room.id, p), 'Rezervaci se nepodařilo smazat');}}>Smazat</button>
                                         ) : null}
