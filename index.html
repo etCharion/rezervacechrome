@@ -693,10 +693,12 @@
         const canUseApp = !!authUser && !!me && me.approved;
         const isAdmin   = !!me?.isAdmin;
 
+        // vlastníkem je ten, kdo rezervaci vytvořil, NEBO učitel, na kterého je psaná
+        const ownsCell = (cell)=> !!(authUser?.uid && cell && (cell.createdBy===authUser.uid || cell.teacherId===authUser.uid));
+
         const openCell = (room, period)=>{
           const cell = effectivePlan?.[room.id]?.[period];
-          const ownerId = cell?.createdBy;
-          const canEdit = !cell || isAdmin || (ownerId && authUser?.uid === ownerId);
+          const canEdit = !cell || isAdmin || ownsCell(cell);
           if(!canEdit && cell){
             const rec = cell.recurringId ? recurring.find(r=>r.id===cell.recurringId) : null;
             setDetail({dateIso:selectedIso, roomId:room.id, period, cell, rec});
@@ -715,24 +717,44 @@
         };
 
         // ---------- moje seznamy (jen pokud je uživatel schválen) ----------
+        // „moje“ = vytvořil(a) jsem, NEBO je psaná na mě (např. od admina);
+        // Firestore neumí OR, proto dva listenery a sloučení podle ID
         useEffect(()=>{
           if(!authUser || !me || waitingApproval) return;
           const uid = authUser.uid;
 
+          const mergeAndSet = (store, setter, sortKey)=>{
+            const seen = new Set();
+            const arr = Object.values(store).flat().filter(r=>{
+              if(seen.has(r.id)) return false; seen.add(r.id); return true;
+            });
+            arr.sort((a,b)=> (a[sortKey]||'').localeCompare(b[sortKey]||'') || String(a.period||'').localeCompare(String(b.period||'')));
+            setter(arr);
+          };
+
           // Bez orderBy => nepotřebuje composite index
-          const unsub1 = db.collection('reservations').where('createdBy','==',uid).onSnapshot(q=>{
-            const arr = q.docs.map(d=>({id:d.id, ...d.data()}));
-            arr.sort((a,b)=> (a.dateISO||'').localeCompare(b.dateISO||'') || String(a.period||'').localeCompare(String(b.period||'')));
-            setMySingles(arr);
-          });
+          const singleStore = {};
+          const recStore = {};
+          const unsubs = [
+            db.collection('reservations').where('createdBy','==',uid).onSnapshot(q=>{
+              singleStore.created = q.docs.map(d=>({id:d.id, ...d.data()}));
+              mergeAndSet(singleStore, setMySingles, 'dateISO');
+            }),
+            db.collection('reservations').where('teacherId','==',uid).onSnapshot(q=>{
+              singleStore.forMe = q.docs.map(d=>({id:d.id, ...d.data()}));
+              mergeAndSet(singleStore, setMySingles, 'dateISO');
+            }),
+            db.collection('recurring').where('createdBy','==',uid).onSnapshot(q=>{
+              recStore.created = q.docs.map(d=>({id:d.id, ...d.data()}));
+              mergeAndSet(recStore, setMyRecurring, 'startISO');
+            }),
+            db.collection('recurring').where('teacherId','==',uid).onSnapshot(q=>{
+              recStore.forMe = q.docs.map(d=>({id:d.id, ...d.data()}));
+              mergeAndSet(recStore, setMyRecurring, 'startISO');
+            }),
+          ];
 
-          const unsub2 = db.collection('recurring').where('createdBy','==',uid).onSnapshot(q=>{
-            const arr = q.docs.map(d=>({id:d.id, ...d.data()}));
-            arr.sort((a,b)=> (a.startISO||'').localeCompare(b.startISO||'') || String(a.period||'').localeCompare(String(b.period||'')));
-            setMyRecurring(arr);
-          });
-
-          return ()=>{ unsub1&&unsub1(); unsub2&&unsub2(); };
+          return ()=>{ unsubs.forEach(u=>u&&u()); };
         },[!!authUser, !!me, waitingApproval]);
 
         // ---------- podmíněné obrazovky (po VŠECH hookách) ----------
@@ -857,7 +879,7 @@
                             const isRecurring = !!cell?.recurringId;
                             const recurringBlue = isRecurring && cell?.allowElsewhere;
                             const cls = !cell ? CELLCLS.free : isRecurring ? (recurringBlue ? CELLCLS.recBlue : CELLCLS.recAmber) : CELLCLS.single;
-                            const canDelete = isAdmin || (cell?.createdBy && authUser?.uid && cell.createdBy===authUser.uid);
+                            const canDelete = isAdmin || ownsCell(cell);
                             return (
                               <td key={p} className="align-top p-1">
                                 <div className={`rounded-xl p-2 min-h-16 ${cls}`} onClick={()=>openCell(room, p)}>
