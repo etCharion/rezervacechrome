@@ -565,6 +565,45 @@
         };
         const removeRoom = async id => { await db.collection('rooms').doc(id).delete(); };
 
+        // ---------- kontrola kolizí ----------
+        // všechny dny, kdy se série koná (max ~45 týdnů = školní rok)
+        function seriesDates(startISO, endISO){
+          const dates = [];
+          let d = startISO, i = 0;
+          while(cmpISO(d, endISO || startISO) <= 0 && i < 60){
+            dates.push(d);
+            d = toISO(addWeeks(parseISO(d), 1));
+            i++;
+          }
+          return dates;
+        }
+        // jednorázové rezervace na stejném slotu v zadaných dnech
+        // (dotaz jen s rovnostmi – nevyžaduje composite index, dny filtrujeme lokálně)
+        async function findSingleConflicts(dates, roomId, period, excludeId){
+          const q = await db.collection('reservations').where('roomId','==',roomId).where('period','==',period).get();
+          const set = new Set(dates);
+          return q.docs.filter(d=> d.id!==excludeId && set.has(d.data().dateISO)).map(d=>d.data().dateISO);
+        }
+        // opakované rezervace na stejném slotu, které se konají v některý ze zadaných dnů
+        function findRecurringConflicts(dates, roomId, period, excludeRecId){
+          const out = [];
+          (recurring||[]).forEach(rec=>{
+            if(rec.id===excludeRecId || rec.roomId!==roomId || rec.period!==period) return;
+            dates.forEach(d=>{ if(occursOn(d, rec)) out.push(d); });
+          });
+          return out;
+        }
+        async function assertNoConflicts(dates, roomId, period, excludeSingleId, excludeRecId){
+          const conflicts = [
+            ...await findSingleConflicts(dates, roomId, period, excludeSingleId),
+            ...findRecurringConflicts(dates, roomId, period, excludeRecId),
+          ];
+          if(conflicts.length === 0) return true;
+          const uniq = [...new Set(conflicts)].sort(cmpISO);
+          showToast(`Nelze uložit – slot už je rezervovaný: ${uniq.slice(0,5).map(czFromISO).join(', ')}${uniq.length>5?` a další (${uniq.length-5})`:''}`);
+          return false;
+        }
+
         // CRUD reservations/recurring
         async function upsertReservation(dateIso, roomId, period, payload, editingRecurringId=null, existingSingleId=null){
           const userId = authUser?.uid || 'unknown';
@@ -578,9 +617,6 @@
             const seriesStartISO = (origSnap && origSnap.exists) ? origSnap.data().startISO : dateIso;
 
             if(payload.repeat){
-              // při převodu jednorázové na opakovanou se maže jen editovaný dokument
-              if(existingSingleId){ await db.collection('reservations').doc(existingSingleId).delete(); }
-
               const rec = {
                 roomId, period,
                 teacherId: teacherForSave,
@@ -589,7 +625,7 @@
                 createdBy: userId,
                 updatedAt: firebase.firestore.FieldValue.serverTimestamp(),
               };
-if(payload.repeat.mode === 'until'){
+              if(payload.repeat.mode === 'until'){
                 rec.mode = 'until';
                 rec.endISO = schoolYearEndISO(parseISO(seriesStartISO));
               } else {
@@ -602,6 +638,13 @@ if(payload.repeat.mode === 'until'){
                 rec.allowElsewhere = !!payload.repeat.allowElsewhere;
               }
 
+              // kolize se kontrolují pro všechny budoucí výskyty série
+              const dates = seriesDates(rec.startISO, rec.endISO);
+              if(!await assertNoConflicts(dates, roomId, period, existingSingleId, editingRecurringId)) return;
+
+              // při převodu jednorázové na opakovanou se maže jen editovaný dokument
+              if(existingSingleId){ await db.collection('reservations').doc(existingSingleId).delete(); }
+
               if(editingRecurringId){
                 await db.collection('recurring').doc(editingRecurringId).set(rec, {merge:true});
               }else{
@@ -609,6 +652,7 @@ if(payload.repeat.mode === 'until'){
                 await db.collection('recurring').add(rec);
               }
             } else {
+              if(!await assertNoConflicts([dateIso], roomId, period, existingSingleId, editingRecurringId)) return;
               if(editingRecurringId){ await db.collection('recurring').doc(editingRecurringId).delete(); }
               const single = {
                 dateISO: dateIso, roomId, period,
@@ -627,6 +671,7 @@ if(payload.repeat.mode === 'until'){
               updatedAt: firebase.firestore.FieldValue.serverTimestamp(),
             });
           } else {
+            if(!await assertNoConflicts([dateIso], roomId, period, null, null)) return;
             const single = {
               dateISO: dateIso, roomId, period,
               teacherId: teacherForSave,
