@@ -770,6 +770,51 @@
           return ()=>{ unsubs.forEach(u=>u&&u()); };
         },[!!authUser, !!me, waitingApproval]);
 
+        // ---------- jednorázová migrace dat posunutých o den ----------
+        // Stará verze toISO() ukládala datumy o den menší (chyba časového pásma).
+        // Nástroj posune všechna uložená data o +1 den; provádí se jen jednou,
+        // provedení je poznamenané v meta/migrations.
+        const [migrationDone,setMigrationDone]=useState(null);
+        useEffect(()=>{
+          if(!isAdmin || !showSettings) return;
+          db.collection('meta').doc('migrations').get()
+            .then(s=>setMigrationDone(!!(s.exists && s.data().dateShiftFixed)))
+            .catch(()=>setMigrationDone(null));
+        },[isAdmin, showSettings]);
+
+        async function runDateShiftMigration(){
+          const shift = iso => toISO(addDays(parseISO(iso), 1));
+          const ops = [];
+          const resSnap = await db.collection('reservations').get();
+          resSnap.docs.forEach(d=>{
+            const r = d.data();
+            if(r.dateISO) ops.push({ref:d.ref, patch:{dateISO: shift(r.dateISO)}});
+          });
+          const recSnap = await db.collection('recurring').get();
+          recSnap.docs.forEach(d=>{
+            const r = d.data();
+            const patch = {};
+            if(r.startISO) patch.startISO = shift(r.startISO);
+            if(r.endISO) patch.endISO = shift(r.endISO);
+            if(Array.isArray(r.exceptions)) patch.exceptions = r.exceptions.map(shift);
+            if(Object.keys(patch).length) ops.push({ref:d.ref, patch});
+          });
+          let count = 0;
+          while(ops.length){
+            const chunk = ops.splice(0, 400); // limit batch je 500 operací
+            const batch = db.batch();
+            chunk.forEach(o=>batch.update(o.ref, o.patch));
+            await batch.commit();
+            count += chunk.length;
+          }
+          await db.collection('meta').doc('migrations').set({
+            dateShiftFixed: true,
+            dateShiftFixedAt: firebase.firestore.FieldValue.serverTimestamp(),
+          },{merge:true});
+          setMigrationDone(true);
+          showToast(`Hotovo – opraveno ${count} záznamů (posun o +1 den).`, 'ok');
+        }
+
         // jen aktuální a budoucí položky pro „Moje rezervace“
         const todayIso = toISO(new Date());
         const mySinglesActive = useMemo(()=> mySingles.filter(s=> s.dateISO && cmpISO(s.dateISO, todayIso) >= 0), [mySingles, todayIso]);
@@ -1100,6 +1145,21 @@
                     <AllowlistForm db={db} onError={(m)=>showToast(m)}/>
                   </div>
                 </div>
+
+                {migrationDone === false && (
+                  <div className="lg:col-span-3 border-t pt-3">
+                    <h3 className="font-medium mb-1">Údržba dat</h3>
+                    <p className="text-xs text-gray-600 mb-2">
+                      Starší verze aplikace ukládala datumy o den menší (chyba časového pásma).
+                      Tento nástroj jednorázově posune všechny uložené rezervace o +1 den. Spusť ho
+                      právě jednou, hned po nasazení opravené verze.
+                    </p>
+                    <button className="px-3 py-2 rounded-xl border bg-white"
+                      onClick={()=>{ if(window.confirm('Opravdu posunout všechna uložená data o +1 den? Akce je jednorázová a nevratná.')) guard(()=>runDateShiftMigration(), 'Migraci se nepodařilo dokončit'); }}>
+                      Opravit posunutá data (+1 den)
+                    </button>
+                  </div>
+                )}
               </section>
             )}
 
