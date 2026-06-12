@@ -454,7 +454,8 @@
             const list = q.docs.map(d=>({id:d.id, ...d.data()}));
             setAllUsers(list);
             const allowed = list.filter(u=>u.approved);
-            setTeachers(allowed.map(u=>({id:u.id, name:u.displayName || u.email})));
+            setTeachers(allowed.map(u=>({id:u.id, name:u.displayName || u.email}))
+              .sort((a,b)=>a.name.localeCompare(b.name,'cs')));
           });
           return ()=>unsub&&unsub();
         },[!!authUser, !!me, waitingApproval]);
@@ -610,6 +611,10 @@
         async function upsertReservation(dateIso, roomId, period, payload, editingRecurringId=null, existingSingleId=null){
           const userId = authUser?.uid || 'unknown';
           const teacherForSave = (me?.isAdmin) ? payload.teacherId : userId;
+          if(cmpISO(dateIso, toISO(new Date())) < 0
+             && !window.confirm('Vybraný den je v minulosti. Opravdu uložit rezervaci do minulosti?')){
+            return;
+          }
           if(!me?.isAdmin && payload.repeat && payload.repeat.mode === 'until'){
             showToast('Opakování „do konce roku“ může vytvářet pouze administrátor. Zvol „Počet týdnů“, nebo požádej administrátora.');
             return;
