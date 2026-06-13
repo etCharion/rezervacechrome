@@ -38,6 +38,12 @@
       const addDays = (d,n)=>{ const x=new Date(d); x.setDate(x.getDate()+n); return x; };
       const addWeeks = (d,n)=> addDays(d, n*7);
       const startOfWeek = d => { const iso = d.getDay() || 7; return addDays(new Date(d.getFullYear(), d.getMonth(), d.getDate()), -(iso-1)); };
+      // Aplikace pracuje jen s pracovním pětidenním týdnem (Po–Pá).
+      const isWeekend = d => { const g = d.getDay(); return g===0 || g===6; };
+      // víkend posune na nejbližší pondělí (dopředu)
+      const toWeekday = d => { let x = new Date(d); while(isWeekend(x)) x = addDays(x,1); return x; };
+      // posun po pracovních dnech – z pátku skočí na pondělí a opačně
+      const addWeekday = (d,dir)=>{ let x = addDays(d, dir); while(isWeekend(x)) x = addDays(x, dir); return x; };
       const isSameDay = (a,b) => a.getFullYear()===b.getFullYear() && a.getMonth()===b.getMonth() && a.getDate()===b.getDate();
       const fullDateCz = d => d.toLocaleDateString('cs-CZ', { weekday:'long', day:'numeric', month:'long', year:'numeric' });
       const shortDateCz = d => d.toLocaleDateString('cs-CZ', { day:'numeric', month:'numeric' });
@@ -339,7 +345,7 @@
 
       // ---------- App ----------
       function App(){
-        const [selectedDate,setSelectedDate]=useState(new Date());
+        const [selectedDate,setSelectedDate]=useState(()=>toWeekday(new Date()));
         const selectedIso = toISO(selectedDate);
 
         const [viewMode,setViewMode]=useState('hours'); // 'hours' | 'breaks'
@@ -876,17 +882,17 @@
                 </div>
 
                 <button onClick={()=>setSelectedDate(addWeeks(selectedDate,-1))} title="Předchozí týden" className="px-3 py-2 rounded-xl border bg-white">◀◀</button>
-                <button onClick={()=>setSelectedDate(addDays(selectedDate,-1))} title="Předchozí den" className="px-3 py-2 rounded-xl border bg-white">◀</button>
-                <button onClick={()=>setSelectedDate(new Date())} className="px-3 py-2 rounded-xl border bg-white">Dnes</button>
+                <button onClick={()=>setSelectedDate(addWeekday(selectedDate,-1))} title="Předchozí den" className="px-3 py-2 rounded-xl border bg-white">◀</button>
+                <button onClick={()=>setSelectedDate(toWeekday(new Date()))} className="px-3 py-2 rounded-xl border bg-white">Dnes</button>
                 <button onClick={()=>setDateModal(true)} className="px-3 py-2 rounded-xl border bg-white">📅 Datum</button>
-                <button onClick={()=>setSelectedDate(addDays(selectedDate,1))} title="Další den" className="px-3 py-2 rounded-xl border bg-white">▶</button>
+                <button onClick={()=>setSelectedDate(addWeekday(selectedDate,1))} title="Další den" className="px-3 py-2 rounded-xl border bg-white">▶</button>
                 <button onClick={()=>setSelectedDate(addWeeks(selectedDate,1))} title="Další týden" className="px-3 py-2 rounded-xl border bg-white">▶▶</button>
                 {isAdmin && (<button onClick={()=>setShowSettings(s=>!s)} className="px-3 py-2 rounded-xl border bg-white">{showSettings?'Skrýt nastavení':'Nastavení'}</button>)}
                 <button onClick={()=>auth.signOut()} className="px-3 py-2 rounded-xl border bg-white">Odhlásit</button>
               </div>
             </header>
 
-            <DateModal open={dateModal} valueISO={toISO(selectedDate)} onClose={()=>setDateModal(false)} onChange={(v)=>v&&setSelectedDate(parseISO(v))}/>
+            <DateModal open={dateModal} valueISO={toISO(selectedDate)} onClose={()=>setDateModal(false)} onChange={(v)=>v&&setSelectedDate(toWeekday(parseISO(v)))}/>
 
             {/* Týdenní panel (náhled ze singles + recurring) */}
             <section className="bg-white/80 rounded-2xl p-4">
