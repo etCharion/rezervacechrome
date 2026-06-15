@@ -1,0 +1,86 @@
+rules_version = '2';
+
+// Bezpečnostní pravidla pro aplikaci Rezervace Chromebooků a učeben.
+// Nasazení: Firebase konzole → Firestore Database → Rules (nebo `firebase deploy --only firestore:rules`).
+// Pravidla vynucují totéž, co vynucuje UI: schvalování účtů, vlastnictví rezervací
+// a admin-only správu. Bez nich lze klientská omezení obejít přímým zápisem do DB.
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    function signedIn() { return request.auth != null; }
+    function meData() { return get(/databases/$(database)/documents/users/$(request.auth.uid)).data; }
+    function hasUserDoc() { return signedIn() && exists(/databases/$(database)/documents/users/$(request.auth.uid)); }
+    function isApproved() { return hasUserDoc() && meData().approved == true; }
+    function isAdmin() { return hasUserDoc() && meData().approved == true && meData().isAdmin == true; }
+    // bootstrap admin – musí odpovídat e-mailu v index.html
+    function isBootstrapAdmin() { return signedIn() && request.auth.token.email == 'dgunka@gymnaziumbma.cz'; }
+    function isAllowlisted() { return signedIn() && exists(/databases/$(database)/documents/allowlist/$(request.auth.token.email)); }
+
+    match /users/{uid} {
+      // schválení uživatelé čtou jména ostatních; každý smí číst svůj vlastní dokument
+      allow read: if isApproved() || (signedIn() && request.auth.uid == uid);
+      // založení vlastního dokumentu při prvním přihlášení:
+      // běžný uživatel bez schválení, předschválený z allowlistu se schválením,
+      // bootstrap admin s admin právy
+      allow create: if signedIn() && request.auth.uid == uid
+        && request.resource.data.email == request.auth.token.email
+        && (
+          (request.resource.data.isAdmin == false && request.resource.data.approved == false)
+          || (request.resource.data.isAdmin == false && request.resource.data.approved == true && isAllowlisted())
+          || isBootstrapAdmin()
+        );
+      // role a schválení mění jen admin; bootstrap admin si je smí nastavit sám;
+      // ostatní si smí měnit jen pole mimo isAdmin/approved
+      allow update: if isAdmin()
+        || (isBootstrapAdmin() && request.auth.uid == uid)
+        || (signedIn() && request.auth.uid == uid
+            && !request.resource.data.diff(resource.data).affectedKeys().hasAny(['isAdmin','approved']));
+      allow delete: if isAdmin();
+    }
+
+    match /rooms/{roomId} {
+      allow read: if isApproved();
+      allow write: if isAdmin();
+    }
+
+    match /reservations/{resId} {
+      allow read: if isApproved();
+      allow create: if isApproved()
+        && request.resource.data.createdBy == request.auth.uid
+        && (isAdmin() || request.resource.data.teacherId == request.auth.uid);
+      // upravit/smazat smí admin, tvůrce, nebo učitel, na kterého je rezervace psaná
+      allow update, delete: if isAdmin()
+        || (isApproved() && (resource.data.createdBy == request.auth.uid
+                             || resource.data.teacherId == request.auth.uid));
+    }
+
+    match /recurring/{recId} {
+      allow read: if isApproved();
+      // opakování „do konce roku“ (mode == 'until') smí založit jen admin
+      allow create: if isApproved()
+        && request.resource.data.createdBy == request.auth.uid
+        && (isAdmin() || (request.resource.data.teacherId == request.auth.uid
+                          && request.resource.data.mode == 'weeks'));
+      // vlastník smí upravovat, ale nesmí si změnit mode na 'until'
+      allow update: if isAdmin()
+        || (isApproved() && (resource.data.createdBy == request.auth.uid
+                             || resource.data.teacherId == request.auth.uid)
+            && (request.resource.data.mode != 'until' || resource.data.mode == 'until'));
+      allow delete: if isAdmin()
+        || (isApproved() && (resource.data.createdBy == request.auth.uid
+                             || resource.data.teacherId == request.auth.uid));
+    }
+
+    match /allowlist/{email} {
+      // při prvním přihlášení si uživatel smí přečíst svůj záznam
+      allow get: if signedIn() && request.auth.token.email == email;
+      allow list, create, update, delete: if isAdmin();
+    }
+
+    // interní metadata (např. příznak provedené migrace dat)
+    match /meta/{docId} {
+      allow read, write: if isAdmin();
+    }
+  }
+}
