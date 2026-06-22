@@ -3,8 +3,8 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Rezervace Chromebooků a učeben</title>
-    <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>💻</text></svg>">
+    <title>Rezervace BMA — Chromebooky &amp; učebny</title>
+    <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Crect width='100' height='100' rx='22' fill='%231366b3'/%3E%3Ctext x='50' y='68' font-size='46' font-family='monospace' font-weight='700' fill='white' text-anchor='middle'%3EB%3C/text%3E%3C/svg%3E">
 
     <!-- React + ReactDOM (UMD, produkční build, pinované verze) -->
     <script crossorigin src="https://unpkg.com/react@18.3.1/umd/react.production.min.js"></script>
@@ -13,16 +13,394 @@
     <!-- Babel standalone (transpilace JSX v prohlížeči, pinovaná verze) -->
     <script src="https://unpkg.com/@babel/standalone@7.26.4/babel.min.js"></script>
 
-    <!-- Tailwind (dev only) -->
-    <script src="https://cdn.tailwindcss.com"></script>
-
     <!-- Firebase compat UMD -->
     <script src="https://www.gstatic.com/firebasejs/9.6.10/firebase-app-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/9.6.10/firebase-auth-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/9.6.10/firebase-firestore-compat.js"></script>
+
+    <!-- Fonty (degradují na system-ui, pokud nejsou dostupné) -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Hanken+Grotesk:wght@400;500;600;700;800&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+
+    <style>
+      /* ============================================================
+         Rezervace BMA — design system (Linear/Notion styl, školní modrá)
+         ============================================================ */
+      :root {
+        --font-ui: "Hanken Grotesk", system-ui, -apple-system, sans-serif;
+        --font-mono: "IBM Plex Mono", ui-monospace, "SF Mono", monospace;
+
+        --brand: #1366b3;
+        --brand-strong: #0f4f8f;
+        --brand-deep: #16335f;
+        --brand-tint: #eaf2fb;
+        --brand-tint-2: #d8e8f7;
+        --gold: #b8901f;
+        --gold-strong: #9a780f;
+        --gold-tint: #f9f1dd;
+
+        --bg: #f4f6f9;
+        --surface: #ffffff;
+        --surface-2: #f7f9fb;
+        --surface-3: #eef1f5;
+        --border: #e4e8ee;
+        --border-strong: #d3dae3;
+        --text: #182334;
+        --text-muted: #5a6678;
+        --text-faint: #8b94a3;
+
+        --free: #2f9e6f;
+        --free-tint: #ebf7f1;
+        --free-border: #cdeadd;
+        --single: var(--brand);
+        --single-tint: var(--brand-tint);
+        --single-border: #cfe2f5;
+        --rec: var(--gold);
+        --rec-tint: var(--gold-tint);
+        --rec-border: #ecdcae;
+
+        --r-sm: 7px;  --r-md: 10px;  --r-lg: 14px;  --r-xl: 20px;
+
+        --sh-sm: 0 1px 2px rgba(20,34,52,.05), 0 1px 1px rgba(20,34,52,.03);
+        --sh-md: 0 4px 12px rgba(20,34,52,.07), 0 1px 3px rgba(20,34,52,.05);
+        --sh-lg: 0 16px 40px rgba(20,34,52,.14), 0 4px 12px rgba(20,34,52,.08);
+        --sh-pop: 0 12px 32px rgba(16,47,92,.18);
+      }
+
+      * { box-sizing: border-box; }
+      html, body { margin: 0; padding: 0; }
+      body {
+        font-family: var(--font-ui);
+        background: var(--bg);
+        color: var(--text);
+        -webkit-font-smoothing: antialiased;
+        text-rendering: optimizeLegibility;
+        font-size: 15px;
+        line-height: 1.45;
+      }
+      button { font-family: inherit; cursor: pointer; }
+      ::selection { background: var(--brand-tint-2); }
+
+      *::-webkit-scrollbar { height: 10px; width: 10px; }
+      *::-webkit-scrollbar-thumb { background: #d3dae3; border-radius: 8px; border: 2px solid transparent; background-clip: content-box; }
+      *::-webkit-scrollbar-thumb:hover { background: #b9c3d0; background-clip: content-box; }
+
+      /* ---- App shell ---- */
+      .app { display: flex; flex-direction: column; min-height: 100vh; background: var(--bg); }
+
+      .appbar {
+        display: flex; align-items: center; gap: 14px;
+        padding: 9px 20px;
+        background: var(--surface);
+        border-bottom: 1px solid var(--border);
+        position: sticky; top: 0; z-index: 40;
+      }
+      .bar-divider { width: 1px; height: 26px; background: var(--border); flex-shrink: 0; }
+      .brand { display: flex; align-items: center; gap: 11px; }
+      .brand-mark {
+        width: 38px; height: 38px; border-radius: 9px;
+        background: linear-gradient(150deg, var(--brand) 0%, var(--brand-deep) 100%);
+        color: #fff; display: grid; place-items: center;
+        font-family: var(--font-mono); font-weight: 600; font-size: 14px;
+        letter-spacing: .02em; box-shadow: var(--sh-sm); flex-shrink: 0;
+      }
+      .brand-text { line-height: 1.15; }
+      .brand-text .t1 { font-weight: 700; font-size: 14.5px; letter-spacing: -.01em; }
+      .brand-text .t2 { font-size: 11.5px; color: var(--text-faint); }
+      @media (max-width: 1080px) { .brand-collapse { display: none; } }
+
+      .topnav { display: flex; gap: 3px; margin-left: 2px; }
+      .nav-item {
+        display: flex; align-items: center; gap: 9px;
+        padding: 7px 13px; border-radius: var(--r-md);
+        color: var(--text-muted); font-size: 13.5px; font-weight: 500;
+        border: none; background: transparent; white-space: nowrap;
+        transition: background .12s, color .12s;
+      }
+      .nav-item:hover { background: var(--surface-3); color: var(--text); }
+      .nav-item.active { background: var(--brand-tint); color: var(--brand-strong); font-weight: 600; }
+      .nav-item svg { width: 17px; height: 17px; flex-shrink: 0; color: var(--text-faint); }
+      .nav-item.active svg { color: var(--brand); }
+
+      .spacer { flex: 1; }
+
+      .user-chip-top { display: flex; align-items: center; gap: 9px; flex-shrink: 0; }
+      .user-chip-top .user-meta { text-align: right; }
+      .avatar {
+        width: 34px; height: 34px; border-radius: 50%;
+        background: var(--brand-deep); color: #fff;
+        display: grid; place-items: center;
+        font-weight: 600; font-size: 13px; flex-shrink: 0;
+      }
+      .user-meta { line-height: 1.2; min-width: 0; }
+      .user-meta .un { font-weight: 600; font-size: 13.5px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 160px; }
+      .user-meta .ur { font-size: 11.5px; color: var(--text-faint); }
+
+      /* segmented control */
+      .seg { display: inline-flex; background: var(--surface-3); padding: 3px; border-radius: var(--r-md); gap: 2px; }
+      .seg button { border: none; background: transparent; padding: 6px 14px; border-radius: 7px; font-size: 13px; font-weight: 600; color: var(--text-muted); transition: all .14s; display: inline-flex; align-items: center; justify-content: center; gap: 5px; }
+      .seg button.on { background: var(--surface); color: var(--brand-strong); box-shadow: var(--sh-sm); }
+
+      /* buttons */
+      .btn {
+        display: inline-flex; align-items: center; gap: 7px;
+        border: 1px solid var(--border-strong); background: var(--surface); color: var(--text);
+        padding: 8px 13px; border-radius: var(--r-md);
+        font-size: 13.5px; font-weight: 600; transition: all .13s; white-space: nowrap; box-shadow: var(--sh-sm);
+      }
+      .btn:hover { background: var(--surface-2); border-color: #c3ccd8; }
+      .btn svg { width: 16px; height: 16px; }
+      .btn.icon { padding: 8px; }
+      .btn.sm { padding: 6px 11px; font-size: 13px; }
+      .btn.sm svg { width: 15px; height: 15px; }
+      .btn.ghost { border-color: transparent; box-shadow: none; background: transparent; }
+      .btn.ghost:hover { background: var(--surface-3); }
+      .btn.primary { background: var(--brand); border-color: var(--brand); color: #fff; box-shadow: 0 1px 2px rgba(15,79,143,.25); }
+      .btn.primary:hover { background: var(--brand-strong); border-color: var(--brand-strong); }
+      .btn.danger { color: #c0463d; }
+      .btn.danger:hover { background: #fbeceb; border-color: #f0c9c5; }
+      .btn.ghost.danger:hover { background: #fbeceb; }
+
+      .weeknav { display: inline-flex; align-items: center; gap: 4px; }
+      .weeknav .btn { padding: 8px; }
+      .date-pill {
+        display: inline-flex; align-items: center; gap: 7px;
+        border: 1px solid var(--border-strong); background: var(--surface);
+        padding: 7px 12px; border-radius: var(--r-md);
+        font-size: 13.5px; font-weight: 600; box-shadow: var(--sh-sm); color: var(--text);
+      }
+      .date-pill:hover { background: var(--surface-2); }
+      .date-pill svg { width: 15px; height: 15px; color: var(--text-muted); }
+
+      .content { padding: 22px 26px 60px; max-width: 1320px; width: 100%; margin: 0 auto; }
+
+      /* ---- Weekly strip ---- */
+      .weekstrip { display: grid; grid-template-columns: repeat(5, 1fr); gap: 12px; margin-bottom: 22px; }
+      .daycard {
+        background: var(--surface); border: 1px solid var(--border); border-radius: var(--r-lg);
+        padding: 13px 13px 12px; text-align: left;
+        transition: box-shadow .14s, border-color .14s; min-height: 120px;
+        display: flex; flex-direction: column;
+      }
+      .daycard:hover { box-shadow: var(--sh-md); border-color: var(--border-strong); }
+      .daycard.sel { border-color: var(--brand); box-shadow: 0 0 0 3px var(--brand-tint); }
+      .daycard.today .dc-dow { color: var(--brand); }
+      .dc-head { display: flex; align-items: baseline; justify-content: space-between; margin-bottom: 9px; }
+      .dc-dow { font-size: 11.5px; font-weight: 700; text-transform: uppercase; letter-spacing: .06em; color: var(--text-faint); }
+      .dc-date { font-family: var(--font-mono); font-size: 17px; font-weight: 600; color: var(--text); letter-spacing: -.02em; }
+      .dc-chips { display: flex; flex-wrap: wrap; gap: 4px; align-content: flex-start; }
+      .chip { font-family: var(--font-mono); font-size: 10.5px; font-weight: 600; padding: 2px 6px; border-radius: 5px; display: inline-flex; align-items: center; gap: 3px; white-space: nowrap; }
+      .chip.single { background: var(--single-tint); color: var(--brand-strong); }
+      .chip.rec { background: var(--rec-tint); color: var(--gold-strong); }
+      .chip.rec-alt { background: var(--surface-3); color: var(--text-muted); border: 1px dashed var(--border-strong); }
+      .chip.free { background: var(--free-tint); color: #1f7a55; font-family: var(--font-ui); }
+      .dc-empty { font-size: 12px; color: var(--text-faint); margin-top: auto; }
+
+      /* ---- Panel / daily plan ---- */
+      .panel { background: var(--surface); border: 1px solid var(--border); border-radius: var(--r-xl); overflow: hidden; box-shadow: var(--sh-sm); }
+      .panel-head { display: flex; align-items: center; gap: 12px; padding: 16px 20px; border-bottom: 1px solid var(--border); }
+      .panel-head h2 { margin: 0; font-size: 15.5px; font-weight: 700; letter-spacing: -.01em; white-space: nowrap; }
+      .panel-head > div:first-child { min-width: 0; }
+      .panel-head .ph-sub { font-size: 12.5px; color: var(--text-faint); }
+
+      .legend { display: inline-flex; gap: 14px; align-items: center; }
+      .lg { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; color: var(--text-muted); font-weight: 500; }
+      .lg .sw { width: 11px; height: 11px; border-radius: 3px; }
+      .sw.free { background: var(--free-tint); border: 1px solid var(--free-border); }
+      .sw.single { background: var(--single-tint); border: 1px solid var(--single-border); }
+      .sw.rec { background: var(--rec-tint); border: 1px solid var(--rec-border); }
+
+      .table-scroll { overflow-x: auto; }
+      table.grid { width: 100%; border-collapse: collapse; min-width: 880px; }
+      table.grid thead th {
+        position: sticky; top: 0; background: var(--surface-2);
+        font-size: 11.5px; font-weight: 600; color: var(--text-muted);
+        text-transform: uppercase; letter-spacing: .04em;
+        padding: 11px 8px; text-align: center; border-bottom: 1px solid var(--border); white-space: nowrap;
+      }
+      table.grid thead th.rowhead { text-align: left; padding-left: 20px; }
+      table.grid thead th .perno { font-family: var(--font-mono); font-size: 13px; color: var(--text); display: block; font-weight: 600; }
+
+      th.rowhead, td.roomcell { position: sticky; left: 0; z-index: 5; background: var(--surface); }
+      td.roomcell { padding: 10px 14px 10px 20px; border-bottom: 1px solid var(--border); border-right: 1px solid var(--border); min-width: 184px; vertical-align: middle; }
+      tr:hover td.roomcell { background: var(--surface-2); }
+      .room-name { display: flex; align-items: center; gap: 9px; }
+      .room-ico { width: 30px; height: 30px; border-radius: 8px; display: grid; place-items: center; flex-shrink: 0; background: var(--surface-3); color: var(--text-muted); }
+      .room-ico.equip { background: var(--brand-tint); color: var(--brand); }
+      .room-ico svg { width: 16px; height: 16px; }
+      .room-meta { display: flex; flex-direction: column; min-width: 0; }
+      .room-meta .rn { font-weight: 600; font-size: 13.5px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+      .room-meta .rd { font-size: 11.5px; color: var(--text-faint); display: flex; gap: 6px; align-items: center; }
+      .room-code { font-family: var(--font-mono); font-size: 10.5px; font-weight: 600; color: var(--text-muted); background: var(--surface-3); padding: 1px 5px; border-radius: 4px; }
+
+      td.slot { padding: 5px; border-bottom: 1px solid var(--border); border-right: 1px solid var(--border); vertical-align: top; }
+      .cell { border-radius: var(--r-md); min-height: 58px; padding: 8px 9px; display: flex; flex-direction: column; gap: 4px; transition: all .12s; cursor: pointer; border: 1px solid transparent; }
+      .cell.free { border: 1px dashed var(--border-strong); color: var(--text-faint); align-items: center; justify-content: center; background: var(--surface); }
+      .cell.free:hover { background: var(--free-tint); border-color: var(--free-border); color: #1f7a55; }
+      .cell.free .plus { display: flex; align-items: center; gap: 5px; font-size: 12px; font-weight: 600; opacity: .8; }
+      .cell.single { background: var(--single-tint); border-color: var(--single-border); }
+      .cell.single:hover { box-shadow: 0 0 0 2px var(--single-border); }
+      .cell.rec { background: var(--rec-tint); border-color: var(--rec-border); }
+      .cell.rec:hover { box-shadow: 0 0 0 2px var(--rec-border); }
+      .cell.rec-alt { background: var(--surface); border: 1px dashed var(--gold); }
+      .cell.rec-alt:hover { box-shadow: 0 0 0 2px var(--rec-border); }
+      .cell-top { display: flex; align-items: center; gap: 5px; }
+      .cell-ico { width: 14px; height: 14px; flex-shrink: 0; display: grid; place-items: center; }
+      .cell.single .cell-ico { color: var(--brand); }
+      .cell.rec .cell-ico, .cell.rec-alt .cell-ico { color: var(--gold-strong); }
+      .cell-teacher { font-weight: 600; font-size: 12.5px; color: var(--text); line-height: 1.2; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+      .cell-note { font-size: 11px; color: var(--text-muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+      .cell-tag { font-size: 9.5px; font-weight: 700; text-transform: uppercase; letter-spacing: .04em; padding: 1px 5px; border-radius: 4px; align-self: flex-start; border: 1px solid transparent; }
+      .cell-tag.tag-year { background: var(--gold-strong); color: #fff; border-color: var(--gold-strong); }
+      .cell-tag.tag-weeks { background: transparent; color: var(--gold-strong); border-color: var(--rec-border); border-style: dashed; }
+
+      /* ---- Dialog / modal ---- */
+      .overlay { position: fixed; inset: 0; z-index: 100; background: rgba(16,28,46,.42); backdrop-filter: blur(2px); display: grid; place-items: center; padding: 20px; animation: fade .15s ease; }
+      @keyframes fade { from { opacity: 0; } }
+      .modal { background: var(--surface); border-radius: var(--r-xl); width: 100%; max-width: 440px; box-shadow: var(--sh-lg); max-height: 92vh; overflow-y: auto; animation: pop .18s cubic-bezier(.2,.8,.2,1); }
+      @keyframes pop { from { opacity: 0; transform: translateY(8px) scale(.98); } }
+      .modal-head { display: flex; align-items: flex-start; justify-content: space-between; padding: 20px 22px 6px; gap: 12px; }
+      .modal-head .mh-t { font-size: 16.5px; font-weight: 700; letter-spacing: -.01em; }
+      .modal-head .mh-s { font-size: 12.5px; color: var(--text-faint); margin-top: 2px; }
+      .modal-body { padding: 12px 22px 4px; display: flex; flex-direction: column; gap: 14px; }
+      .modal-foot { display: flex; justify-content: flex-end; gap: 9px; padding: 16px 22px 20px; flex-wrap: wrap; }
+      .x-btn { border: none; background: transparent; color: var(--text-faint); padding: 5px; border-radius: 7px; display: grid; place-items: center; flex-shrink: 0; }
+      .x-btn:hover { background: var(--surface-3); color: var(--text); }
+      .x-btn svg { width: 18px; height: 18px; }
+
+      .field label { display: block; font-size: 12.5px; font-weight: 600; color: var(--text-muted); margin-bottom: 6px; }
+      .input, .select { width: 100%; border: 1px solid var(--border-strong); border-radius: var(--r-md); padding: 9px 11px; font-size: 14px; font-family: inherit; color: var(--text); background: var(--surface); transition: border-color .12s, box-shadow .12s; }
+      .input:focus, .select:focus { outline: none; border-color: var(--brand); box-shadow: 0 0 0 3px var(--brand-tint); }
+      .select { appearance: none; background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%235a6678' stroke-width='2.5'%3E%3Cpath d='M6 9l6 6 6-6'/%3E%3C/svg%3E"); background-repeat: no-repeat; background-position: right 11px center; padding-right: 30px; }
+      .input:disabled { background: var(--surface-3); color: var(--text-faint); }
+
+      .toggle-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+      .switch { position: relative; width: 40px; height: 23px; flex-shrink: 0; }
+      .switch input { opacity: 0; width: 0; height: 0; }
+      .switch .track { position: absolute; inset: 0; background: var(--border-strong); border-radius: 999px; transition: background .16s; }
+      .switch .track::before { content: ""; position: absolute; width: 17px; height: 17px; left: 3px; top: 3px; background: #fff; border-radius: 50%; transition: transform .16s; box-shadow: var(--sh-sm); }
+      .switch input:checked + .track { background: var(--brand); }
+      .switch input:checked + .track::before { transform: translateX(17px); }
+
+      .miniseg { display: inline-flex; border: 1px solid var(--border-strong); border-radius: var(--r-md); overflow: hidden; }
+      .miniseg button { border: none; background: var(--surface); padding: 7px 13px; font-size: 13px; font-weight: 600; color: var(--text-muted); }
+      .miniseg button + button { border-left: 1px solid var(--border-strong); }
+      .miniseg button.on { background: var(--brand-tint); color: var(--brand-strong); }
+
+      .helptext { font-size: 12px; color: var(--text-faint); }
+      .divider { height: 1px; background: var(--border); margin: 2px 0; }
+      .locked-field { display: flex; align-items: center; gap: 9px; border: 1px solid var(--border); background: var(--surface-2); border-radius: var(--r-md); padding: 8px 11px; font-size: 13.5px; font-weight: 600; color: var(--text); }
+
+      .banner { display: flex; align-items: center; gap: 9px; background: var(--gold-tint); border: 1px solid var(--rec-border); color: var(--gold-strong); border-radius: var(--r-md); padding: 9px 12px; font-size: 12.5px; font-weight: 500; }
+      .banner svg { width: 15px; height: 15px; flex-shrink: 0; }
+      .banner.warn { background: #fef0e6; border-color: #f5d6bd; color: #b5631a; }
+
+      /* list rows (Moje / Nastavení) */
+      .mylist-row { display: flex; align-items: center; gap: 12px; padding: 11px 12px; border-radius: var(--r-md); }
+      .mylist-row:hover { background: var(--surface-2); }
+      .lr-t { font-weight: 600; font-size: 14px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+      .mylist-row .ph-sub { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-size: 12.5px; color: var(--text-faint); }
+
+      /* role pills */
+      .role-pill { display: inline-flex; align-items: center; gap: 4px; font-size: 10px; font-weight: 700; letter-spacing: .02em; padding: 2px 7px; border-radius: 999px; white-space: nowrap; }
+      .role-pill.admin { background: var(--gold-tint); color: var(--gold-strong); }
+      .role-pill.pending { background: #fef0e6; color: #b5631a; }
+
+      /* toast */
+      .toast { position: fixed; bottom: 22px; left: 50%; transform: translateX(-50%); z-index: 200; display: flex; align-items: center; gap: 9px; padding: 11px 16px; border-radius: var(--r-md); font-size: 13.5px; font-weight: 600; box-shadow: var(--sh-pop); max-width: min(440px, 90vw); animation: toastin .22s cubic-bezier(.2,.8,.2,1); }
+      @keyframes toastin { from { opacity: 0; transform: translate(-50%, 10px); } }
+      .toast.error { background: #c0463d; color: #fff; }
+      .toast.ok { background: #2f8f63; color: #fff; }
+      .toast svg { flex-shrink: 0; }
+
+      /* detail card */
+      .detail-card { border: 1px solid var(--border); border-radius: var(--r-md); padding: 4px 14px; background: var(--surface-2); border-left: 3px solid var(--brand); }
+      .detail-card.rec, .detail-card.rec-alt { border-left-color: var(--gold); }
+      .detail-row { display: flex; gap: 14px; padding: 9px 0; border-bottom: 1px solid var(--border); font-size: 13.5px; }
+      .detail-row:last-child { border-bottom: none; }
+      .detail-row .dl { color: var(--text-faint); width: 130px; flex-shrink: 0; font-weight: 500; }
+      .detail-row .dv { font-weight: 600; color: var(--text); }
+
+      /* settings */
+      .settings-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(320px,1fr)); gap: 20px; max-width: 1120px; align-items: start; }
+      .user-row { display: flex; align-items: center; gap: 11px; padding: 10px 12px; }
+      .user-row .urname { display: flex; align-items: center; gap: 7px; min-width: 0; }
+      .user-row .urn-name { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
+      .user-row .role-pill { flex-shrink: 0; }
+      .user-row .ph-sub { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-size: 12.5px; color: var(--text-faint); }
+      .user-toggles { display: flex; align-items: center; gap: 10px; margin-left: auto; flex-shrink: 0; }
+      .mini-check { display: inline-flex; align-items: center; gap: 5px; font-size: 12.5px; font-weight: 600; color: var(--text-muted); }
+      .mini-check input { width: 15px; height: 15px; accent-color: var(--brand); }
+      .allow-add { display: flex; gap: 8px; }
+      .allow-add .input { flex: 1; }
+      .allow-row { display: flex; align-items: center; gap: 9px; font-size: 13px; color: var(--text); background: var(--surface-2); border: 1px solid var(--border); border-radius: var(--r-md); padding: 8px 11px; }
+      .allow-row svg { color: var(--text-faint); }
+      .maint-card { display: flex; align-items: center; gap: 12px; }
+
+      /* room reorder (drag & drop) */
+      .reorder-hint { display: flex; align-items: center; gap: 7px; font-size: 12px; color: var(--text-faint); padding: 12px 16px 8px; }
+      .reorder-hint svg { flex-shrink: 0; }
+      .roomsort { display: flex; flex-direction: column; gap: 6px; padding: 0 10px 12px; }
+      .roomsort-row { display: flex; align-items: center; gap: 11px; padding: 9px 10px; border: 1px solid var(--border); border-radius: var(--r-md); background: var(--surface); cursor: grab; transition: border-color .12s, box-shadow .12s, opacity .12s; }
+      .roomsort-row:hover { border-color: var(--border-strong); box-shadow: var(--sh-sm); }
+      .roomsort-row .grip { color: var(--text-faint); display: grid; place-items: center; cursor: grab; flex-shrink: 0; }
+      .roomsort-row.dragging { opacity: .45; cursor: grabbing; }
+      .roomsort-row.dragover { border-color: var(--brand); box-shadow: 0 -2px 0 0 var(--brand) inset; background: var(--brand-tint); }
+      .roomsort-row .lr-t { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+      .roomsort-row .ph-sub { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-size: 12px; color: var(--text-faint); }
+
+      /* ---- Mobile bottom nav + schedule ---- */
+      .mobile-bar { display: none; position: fixed; bottom: 0; left: 0; right: 0; z-index: 40; background: rgba(255,255,255,.92); backdrop-filter: blur(10px); border-top: 1px solid var(--border); padding: 8px 10px calc(8px + env(safe-area-inset-bottom)); justify-content: space-around; }
+      .mobile-bar .mb { display: flex; flex-direction: column; align-items: center; gap: 3px; border: none; background: transparent; color: var(--text-faint); font-size: 10.5px; font-weight: 600; padding: 4px 14px; border-radius: 9px; }
+      .mobile-bar .mb.active { color: var(--brand); }
+      .mobile-bar .mb svg { width: 21px; height: 21px; }
+
+      .mobile-controls { display: none; }
+
+      .msched { display: flex; flex-direction: column; gap: 12px; padding: 12px; }
+      .mroom { border: 1px solid var(--border); border-radius: var(--r-lg); overflow: hidden; background: var(--surface); }
+      .mroom-head { display: flex; align-items: center; gap: 10px; padding: 11px 13px; background: var(--surface-2); border-bottom: 1px solid var(--border); }
+      .mperiods { display: grid; grid-template-columns: repeat(auto-fill, minmax(94px, 1fr)); gap: 7px; padding: 11px; }
+      .mperiod { font-family: inherit; border: 1px solid transparent; border-radius: var(--r-md); min-height: 58px; padding: 8px 9px; display: flex; flex-direction: column; gap: 4px; text-align: left; background: var(--surface); transition: box-shadow .12s; }
+      .mp-head { display: flex; align-items: baseline; gap: 5px; }
+      .mp-no { font-family: var(--font-mono); font-weight: 600; font-size: 13.5px; color: var(--text); }
+      .mp-body { display: flex; align-items: center; gap: 4px; font-size: 12px; font-weight: 600; color: var(--text); overflow: hidden; margin-top: auto; }
+      .mp-body svg { flex-shrink: 0; color: var(--gold-strong); }
+      .mp-who { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+      .mp-free { font-size: 11.5px; color: var(--text-faint); font-weight: 600; display: flex; align-items: center; gap: 4px; margin-top: auto; }
+      .mperiod.free { border: 1px dashed var(--border-strong); }
+      .mperiod.single { background: var(--single-tint); border-color: var(--single-border); }
+      .mperiod.single .mp-no { color: var(--brand-strong); }
+      .mperiod.rec { background: var(--rec-tint); border-color: var(--rec-border); }
+      .mperiod.rec .mp-no, .mperiod.rec .mp-body { color: var(--gold-strong); }
+      .mperiod.rec-alt { background: var(--surface); border: 1px dashed var(--gold); }
+      .mperiod.rec-alt .mp-no, .mperiod.rec-alt .mp-body { color: var(--gold-strong); }
+      .mp-tag { font-size: 9px; font-weight: 700; text-transform: uppercase; letter-spacing: .03em; padding: 1px 5px; border-radius: 4px; border: 1px solid transparent; align-self: flex-start; margin-top: 2px; }
+      .mp-tag.tag-year { background: var(--gold-strong); color: #fff; }
+      .mp-tag.tag-weeks { background: transparent; color: var(--gold-strong); border-color: var(--rec-border); border-style: dashed; }
+
+      /* auth screens */
+      .auth-wrap { min-height: 100vh; display: grid; place-items: center; padding: 24px; background: var(--bg); }
+      .auth-card { background: var(--surface); border: 1px solid var(--border); border-radius: var(--r-xl); box-shadow: var(--sh-md); padding: 30px; max-width: 400px; width: 100%; }
+
+      /* ---- responsive: ≤860px = mobil ---- */
+      @media (min-width: 861px) { .show-mobile { display: none !important; } }
+      @media (max-width: 860px) {
+        .appbar { padding: 9px 14px; gap: 10px; }
+        .ctrl-nav { display: none !important; }
+        .desk-ctrl { display: none !important; }
+        .content { padding: 16px 14px 96px; }
+        .weekstrip { grid-template-columns: repeat(5, minmax(118px, 1fr)); overflow-x: auto; gap: 9px; }
+        .settings-grid { grid-template-columns: 1fr; }
+        .hide-mobile { display: none !important; }
+        .mobile-bar { display: flex; }
+        .mobile-controls { display: flex; gap: 8px; padding: 12px 14px 0; align-items: center; }
+      }
+    </style>
   </head>
 
-  <body class="bg-gradient-to-br from-indigo-100 via-fuchsia-100 to-sky-100">
+  <body>
     <div id="root"></div>
 
     <script type="text/babel">
@@ -40,13 +418,13 @@
       const startOfWeek = d => { const iso = d.getDay() || 7; return addDays(new Date(d.getFullYear(), d.getMonth(), d.getDate()), -(iso-1)); };
       // Aplikace pracuje jen s pracovním pětidenním týdnem (Po–Pá).
       const isWeekend = d => { const g = d.getDay(); return g===0 || g===6; };
-      // víkend posune na nejbližší pondělí (dopředu)
       const toWeekday = d => { let x = new Date(d); while(isWeekend(x)) x = addDays(x,1); return x; };
-      // posun po pracovních dnech – z pátku skočí na pondělí a opačně
       const addWeekday = (d,dir)=>{ let x = addDays(d, dir); while(isWeekend(x)) x = addDays(x, dir); return x; };
       const isSameDay = (a,b) => a.getFullYear()===b.getFullYear() && a.getMonth()===b.getMonth() && a.getDate()===b.getDate();
       const fullDateCz = d => d.toLocaleDateString('cs-CZ', { weekday:'long', day:'numeric', month:'long', year:'numeric' });
       const shortDateCz = d => d.toLocaleDateString('cs-CZ', { day:'numeric', month:'numeric' });
+      const dowCz = d => ['Ne','Po','Út','St','Čt','Pá','So'][d.getDay()];
+      const capitalize = s => s ? s.charAt(0).toUpperCase()+s.slice(1) : s;
       const cmpISO = (a,b)=>{ const A=parseISO(a), B=parseISO(b); if (A<B) return -1; if (A>B) return 1; return 0; };
       const diffDays = (aISO,bISO)=> Math.round((parseISO(aISO) - parseISO(bISO)) / 86400000);
       const schoolYearEndISO = (date)=>{
@@ -81,8 +459,55 @@
         const b = BREAKS.find(x=>x.id===p);
         return b ? b.label : String(p);
       };
-      const Badge=({children,className=''})=> <span className={`inline-block text-[10px] px-1.5 py-0.5 rounded ${className}`}>{children}</span>;
-      const CELLCLS = { free:'bg-green-100 border border-green-400', single:'bg-red-100 border border-red-400', recAmber:'bg-amber-100 border border-amber-400', recBlue:'bg-blue-100 border border-blue-400' };
+
+      // jména učitelů
+      const stripTitle = (s)=> (s||'').replace(/^(Mgr\.|Ing\.|RNDr\.|Bc\.|MgA\.|PhDr\.|PaedDr\.|doc\.|prof\.|Dr\.)\s*/i,'').trim();
+      const shortName = (s)=>{ const n = stripTitle(s); const parts = n.split(' ').filter(Boolean); return parts.length>1 ? `${parts[0][0]}. ${parts.slice(1).join(' ')}` : (n || '—'); };
+      const initialsOf = (s)=>{ const n = stripTitle(s); const parts = n.split(/[\s.@_]+/).filter(Boolean); const a=(parts[0]?.[0]||''), b=(parts[1]?.[0]||''); return ((a+b).toUpperCase()) || (s||'?').slice(0,2).toUpperCase(); };
+
+      // typ buňky + štítek opakování
+      const cellKind = (cell)=> !cell ? 'free' : cell.recurringId ? (cell.allowElsewhere ? 'rec-alt' : 'rec') : 'single';
+      const recLabel = (cell)=>{ const base = cell?.mode==='until' ? 'Celý rok' : `${cell?.weeks||'?'} týdnů`; return cell?.allowElsewhere ? `${base} · jinde` : base; };
+
+      // ---------- ikony (inline SVG, Lucide-styl) ----------
+      const Ico = ({ d, paths, size=18, fill, sw=1.9, ...p }) => (
+        <svg width={size} height={size} viewBox="0 0 24 24" fill={fill||"none"} stroke="currentColor"
+             strokeWidth={sw} strokeLinecap="round" strokeLinejoin="round" {...p}>
+          {d && <path d={d} />}{paths}
+        </svg>
+      );
+      const IconCalendar = (p)=> <Ico {...p} paths={<><rect x="3" y="4.5" width="18" height="17" rx="2.5"/><path d="M3 9h18M8 2.5v4M16 2.5v4"/></>} />;
+      const IconList     = (p)=> <Ico {...p} paths={<><path d="M8 6h13M8 12h13M8 18h13M3.5 6h.01M3.5 12h.01M3.5 18h.01"/></>} />;
+      const IconSettings = (p)=> <Ico {...p} paths={<><circle cx="12" cy="12" r="3"/><path d="M19.4 13a1.6 1.6 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.6 1.6 0 0 0-2.7 1.1V21a2 2 0 1 1-4 0v-.1A1.6 1.6 0 0 0 7 19.4a1.6 1.6 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.6 1.6 0 0 0-1.1-2.7H1a2 2 0 1 1 0-4h.1A1.6 1.6 0 0 0 2.6 7a1.6 1.6 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.6 1.6 0 0 0 1.8.3H7a1.6 1.6 0 0 0 1-1.5V1a2 2 0 1 1 4 0v.1A1.6 1.6 0 0 0 17 2.6a1.6 1.6 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.6 1.6 0 0 0-.3 1.8V7a1.6 1.6 0 0 0 1.5 1H23a2 2 0 1 1 0 4h-.1a1.6 1.6 0 0 0-1.5 1Z"/></>} sw={1.6} />;
+      const IconChevL    = (p)=> <Ico {...p} d="M15 18l-6-6 6-6" />;
+      const IconChevR    = (p)=> <Ico {...p} d="M9 18l6-6-6-6" />;
+      const IconChevLL   = (p)=> <Ico {...p} d="M18 18l-6-6 6-6M11 18l-6-6 6-6" />;
+      const IconChevRR   = (p)=> <Ico {...p} d="M6 18l6-6-6-6M13 18l6-6-6-6" />;
+      const IconPlus     = (p)=> <Ico {...p} d="M12 5v14M5 12h14" sw={2.2} />;
+      const IconUser     = (p)=> <Ico {...p} paths={<><circle cx="12" cy="8" r="4"/><path d="M4 21a8 8 0 0 1 16 0"/></>} />;
+      const IconRepeat   = (p)=> <Ico {...p} paths={<><path d="M17 2l4 4-4 4"/><path d="M3 11v-1a4 4 0 0 1 4-4h14M7 22l-4-4 4-4"/><path d="M21 13v1a4 4 0 0 1-4 4H3"/></>} sw={1.8} />;
+      const IconInfinity = (p)=> <Ico {...p} d="M6.5 8.5c-2 0-3.5 1.6-3.5 3.5s1.5 3.5 3.5 3.5c3.5 0 4.5-7 8-7 2 0 3.5 1.6 3.5 3.5s-1.5 3.5-3.5 3.5c-3.5 0-4.5-7-8-7Z" sw={1.7} />;
+      const IconTrash    = (p)=> <Ico {...p} paths={<><path d="M4 7h16M9 7V5a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2M6 7l1 13a1 1 0 0 0 1 1h8a1 1 0 0 0 1-1l1-13"/></>} sw={1.7} />;
+      const IconLogout   = (p)=> <Ico {...p} paths={<><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4M16 17l5-5-5-5M21 12H9"/></>} />;
+      const IconShield   = (p)=> <Ico {...p} paths={<><path d="M12 2.5 4.5 5.5v6c0 5 3.4 8 7.5 10 4.1-2 7.5-5 7.5-10v-6L12 2.5Z"/><path d="M9 12l2 2 4-4"/></>} sw={1.7} />;
+      const IconAlert    = (p)=> <Ico {...p} paths={<><circle cx="12" cy="12" r="9"/><path d="M12 8v4.5M12 16h.01"/></>} />;
+      const IconCheck    = (p)=> <Ico {...p} d="M5 13l4 4L19 7" sw={2.2} />;
+      const IconClose    = (p)=> <Ico {...p} d="M18 6 6 18M6 6l12 12" sw={2} />;
+      const IconInfo     = (p)=> <Ico {...p} paths={<><circle cx="12" cy="12" r="9"/><path d="M12 11v5M12 8h.01"/></>} />;
+      const IconDatabase = (p)=> <Ico {...p} paths={<><ellipse cx="12" cy="5.5" rx="8" ry="3"/><path d="M4 5.5v13c0 1.7 3.6 3 8 3s8-1.3 8-3v-13M4 12c0 1.7 3.6 3 8 3s8-1.3 8-3"/></>} sw={1.7} />;
+      const IconMail     = (p)=> <Ico {...p} paths={<><rect x="2.5" y="4.5" width="19" height="15" rx="2.5"/><path d="m3 6 9 6 9-6"/></>} />;
+      const IconUserCheck= (p)=> <Ico {...p} paths={<><circle cx="9" cy="8" r="4"/><path d="M2.5 21a6.5 6.5 0 0 1 12 0M16 11.5l2 2 4-4"/></>} />;
+      const IconBan      = (p)=> <Ico {...p} paths={<><circle cx="12" cy="12" r="9"/><path d="M5.6 5.6l12.8 12.8"/></>} />;
+      const IconGrip     = (p)=> <Ico {...p} paths={<><circle cx="9" cy="6" r="1.4" fill="currentColor" stroke="none"/><circle cx="15" cy="6" r="1.4" fill="currentColor" stroke="none"/><circle cx="9" cy="12" r="1.4" fill="currentColor" stroke="none"/><circle cx="15" cy="12" r="1.4" fill="currentColor" stroke="none"/><circle cx="9" cy="18" r="1.4" fill="currentColor" stroke="none"/><circle cx="15" cy="18" r="1.4" fill="currentColor" stroke="none"/></>} />;
+      const IconLaptop   = (p)=> <Ico {...p} paths={<><rect x="4" y="5" width="16" height="11" rx="1.5"/><path d="M2 20h20M9.5 16h5"/></>} />;
+      const IconDoor     = (p)=> <Ico {...p} paths={<><path d="M14 3h3a1 1 0 0 1 1 1v16M6 21V4a1 1 0 0 1 1-1h7v18H4"/><path d="M11 12h.01"/></>} />;
+      const IconTablet   = (p)=> <Ico {...p} paths={<><rect x="5" y="3" width="14" height="18" rx="2"/><path d="M11 18h2"/></>} />;
+
+      const roomIcon = (room, size=16)=>{
+        if(!room) return <IconDoor size={size}/>;
+        if(room.type==='equipment') return room.code==='IPD' ? <IconTablet size={size}/> : <IconLaptop size={size}/>;
+        return <IconDoor size={size}/>;
+      };
 
       // ---------- Firebase init ----------
       const firebaseConfig = {
@@ -97,43 +522,39 @@
       const auth = firebase.auth();
       const db   = firebase.firestore();
 
-      // ---------- Dialogy ----------
+      // ---------- Dialogy / prezentační komponenty ----------
       function DateModal({open,valueISO,onClose,onChange}){
         if(!open) return null;
         return (
-          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
-            <div className="bg-white rounded-2xl shadow-xl w-full max-w-sm p-4 max-h-[90vh] overflow-y-auto">
-              <div className="flex items-center justify-between mb-3">
-                <h3 className="text-lg font-semibold">Vyber datum</h3>
-                <button onClick={onClose} className="p-2 rounded-full hover:bg-gray-100">✕</button>
-              </div>
-              <input type="date" className="w-full border rounded-xl px-3 py-2" value={valueISO} onChange={e=>onChange(e.target.value)} />
-              <div className="flex justify-end mt-3"><button onClick={onClose} className="px-3 py-2 rounded-xl border">Hotovo</button></div>
+          <div className="overlay" onClick={onClose}>
+            <div className="modal" style={{maxWidth:'360px'}} onClick={e=>e.stopPropagation()}>
+              <div className="modal-head"><div className="mh-t">Vyber datum</div><button className="x-btn" onClick={onClose}><IconClose/></button></div>
+              <div className="modal-body"><input type="date" className="input" value={valueISO} onChange={e=>onChange(e.target.value)} /></div>
+              <div className="modal-foot"><button className="btn primary" onClick={onClose}>Hotovo</button></div>
             </div>
           </div>
         );
       }
 
-      function DetailModal({detail,onClose,rooms,teachers}){
+      function DetailModal({detail,onClose,rooms,tName}){
         if(!detail) return null;
         const room = rooms.find(r=>r.id===detail.roomId);
+        const kind = detail.rec ? (detail.cell.allowElsewhere ? 'rec-alt' : 'rec') : 'single';
         return (
-          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40" onClick={onClose}>
-            <div className="bg-white rounded-2xl shadow-xl w-full max-w-sm p-4" onClick={e=>e.stopPropagation()}>
-              <div className="flex items-center justify-between mb-3">
-                <h3 className="text-lg font-semibold">Detail rezervace</h3>
-                <button onClick={onClose} className="p-2 rounded-full hover:bg-gray-100">✕</button>
+          <div className="overlay" onClick={onClose}>
+            <div className="modal" onClick={e=>e.stopPropagation()}>
+              <div className="modal-head"><div><div className="mh-t">Detail rezervace</div><div className="mh-s">Tuto rezervaci vytvořil někdo jiný — jen ke čtení.</div></div><button className="x-btn" onClick={onClose}><IconClose/></button></div>
+              <div className="modal-body">
+                <div className={`detail-card ${kind}`}>
+                  <div className="detail-row"><span className="dl">Učebna / pomůcka</span><span className="dv">{room?.name || '—'}</span></div>
+                  <div className="detail-row"><span className="dl">Kdy</span><span className="dv">{fullDateCz(parseISO(detail.dateIso))}, {periodLabel(detail.period)}</span></div>
+                  <div className="detail-row"><span className="dl">Rezervoval/a</span><span className="dv">{tName(detail.cell.teacherId)}</span></div>
+                  {detail.cell.note && <div className="detail-row"><span className="dl">Poznámka</span><span className="dv">{detail.cell.note}</span></div>}
+                  <div className="detail-row"><span className="dl">Typ</span><span className="dv">{detail.rec ? `Opakovaná · ${detail.rec.mode==='until'?'do konce roku':`${detail.rec.weeks} týdnů`}${detail.cell.allowElsewhere?' · může být i jinde':''}` : 'Jednorázová'}</span></div>
+                </div>
+                <div className="helptext" style={{display:'flex',gap:'7px',alignItems:'center'}}><IconInfo size={14}/> Upravit ji může jen autor nebo administrátor.</div>
               </div>
-              <div className="text-sm space-y-1">
-                <div><span className="text-gray-600">Učebna/pomůcka:</span> <span className="font-medium">{room?.name || '—'}</span></div>
-                <div><span className="text-gray-600">Kdy:</span> {fullDateCz(parseISO(detail.dateIso))}, {periodLabel(detail.period)}</div>
-                <div><span className="text-gray-600">Rezervoval/a:</span> <span className="font-medium">{teachers.find(t=>t.id===detail.cell.teacherId)?.name || '—'}</span></div>
-                {detail.cell.note && <div><span className="text-gray-600">Poznámka:</span> {detail.cell.note}</div>}
-                {detail.rec
-                  ? <div><span className="text-gray-600">Typ:</span> opakovaná, každý týden {detail.rec.mode==='weeks' ? `(${detail.rec.weeks} týdnů od ${czFromISO(detail.rec.startISO)})` : `do ${czFromISO(detail.rec.endISO)}`}</div>
-                  : <div><span className="text-gray-600">Typ:</span> jednorázová</div>}
-              </div>
-              <div className="flex justify-end mt-4"><button onClick={onClose} className="px-3 py-2 rounded-xl border">Zavřít</button></div>
+              <div className="modal-foot"><button className="btn primary" onClick={onClose}>Zavřít</button></div>
             </div>
           </div>
         );
@@ -145,7 +566,7 @@
         const [code,setCode]=useState("");
         const [type,setType]=useState("room");
         const [max,setMax]=useState(1);
-        const [usage,setUsage]=useState("hours"); // 'hours' | 'both' | 'breaks'
+        const [usage,setUsage]=useState("hours");
 
         useEffect(()=>{
           if(!open) return;
@@ -161,185 +582,329 @@
         const isEquip = type === "equipment";
 
         return (
-          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
-            <div className="bg-white rounded-2xl shadow-xl w-full max-w-md p-4 max-h-[90vh] overflow-y-auto">
-              <div className="flex items-center justify-between mb-3">
-                <h3 className="text-lg font-semibold">{initial?"Upravit místnost":"Nová místnost"}</h3>
-                <button onClick={onClose} className="p-2 rounded-full hover:bg-gray-100">✕</button>
-              </div>
-
-              <div className="grid grid-cols-6 gap-2">
-                <input className="col-span-3 border rounded-xl px-3 py-2" placeholder="Název" value={name} onChange={e=>setName(e.target.value)} />
-                <input className="col-span-2 border rounded-xl px-3 py-2" placeholder="Patro" value={floor} onChange={e=>setFloor(e.target.value)} />
-                <input className="col-span-1 border rounded-xl px-3 py-2" placeholder="Zkratka" value={code} onChange={e=>setCode(e.target.value)} />
-
-                <select className="col-span-3 border rounded-xl px-3 py-2" value={type} onChange={e=>setType(e.target.value)}>
-                  <option value="room">Učebna</option>
-                  <option value="equipment">Pomůcka</option>
-                </select>
-
-                <select className="col-span-3 border rounded-xl px-3 py-2" value={usage} onChange={e=>setUsage(e.target.value)}>
-                  <option value="hours">Pro hodiny</option>
-                  <option value="both">Obojí</option>
-                  <option value="breaks">Pro přestávky</option>
-                </select>
-
-                <input
-                  className="col-span-3 border rounded-xl px-3 py-2"
-                  type="number"
-                  min="1"
-                  placeholder="Max. kusů (jen pro pomůcky)"
-                  value={max}
-                  onChange={e=>setMax(Number(e.target.value)||1)}
-                  disabled={!isEquip}
-                />
-                <div className="col-span-3 text-xs text-gray-600 flex items-center">
-                  {isEquip ? "Max. kusů je jen informativní." : "Pro učebny se max neřeší."}
+          <div className="overlay" onClick={onClose}>
+            <div className="modal" onClick={e=>e.stopPropagation()}>
+              <div className="modal-head"><div className="mh-t">{initial?"Upravit místnost":"Nová místnost"}</div><button className="x-btn" onClick={onClose}><IconClose/></button></div>
+              <div className="modal-body">
+                <div className="field"><label>Název</label><input className="input" placeholder="Např. Učebna informatiky" value={name} onChange={e=>setName(e.target.value)} /></div>
+                <div style={{display:'flex',gap:'12px'}}>
+                  <div className="field" style={{flex:1}}><label>Patro</label><input className="input" value={floor} onChange={e=>setFloor(e.target.value)} /></div>
+                  <div className="field" style={{flex:1}}><label>Zkratka</label><input className="input" value={code} onChange={e=>setCode(e.target.value)} /></div>
+                </div>
+                <div style={{display:'flex',gap:'12px'}}>
+                  <div className="field" style={{flex:1}}><label>Typ</label>
+                    <select className="select" value={type} onChange={e=>setType(e.target.value)}>
+                      <option value="room">Učebna</option>
+                      <option value="equipment">Pomůcka</option>
+                    </select>
+                  </div>
+                  <div className="field" style={{flex:1}}><label>Využití</label>
+                    <select className="select" value={usage} onChange={e=>setUsage(e.target.value)}>
+                      <option value="hours">Pro hodiny</option>
+                      <option value="both">Obojí</option>
+                      <option value="breaks">Pro přestávky</option>
+                    </select>
+                  </div>
+                </div>
+                <div className="field">
+                  <label>Max. kusů {isEquip ? '' : <span style={{fontWeight:500,color:'var(--text-faint)'}}>(jen pro pomůcky)</span>}</label>
+                  <input className="input" type="number" min="1" value={max} onChange={e=>setMax(Number(e.target.value)||1)} disabled={!isEquip} style={{maxWidth:'140px'}} />
                 </div>
               </div>
-
-              <div className="flex justify-end gap-2 mt-4">
-                <button onClick={onClose} className="px-3 py-2 rounded-xl border">Zrušit</button>
-                <button
+              <div className="modal-foot">
+                <button onClick={onClose} className="btn">Zrušit</button>
+                <button className="btn primary"
                   onClick={()=>{
-                    const payload = {
-                      name: name.trim(),
-                      floor: floor.trim(),
-                      code: code.trim(),
-                      type,
-                      usage,
-                    };
-                    if(type === "equipment"){
-                      payload.max = Math.max(1, Number(max)||1);
-                    }
+                    const payload = { name:name.trim(), floor:floor.trim(), code:code.trim(), type, usage };
+                    if(type === "equipment"){ payload.max = Math.max(1, Number(max)||1); }
                     onSave(payload);
-                  }}
-                  className="px-3 py-2 rounded-xl bg-black text-white"
-                >Uložit</button>
+                  }}>Uložit</button>
               </div>
             </div>
           </div>
         );
       }
 
-      function ReservationDialog({open,onClose,onSave,teachers,initial,room,dateIso,period,editingRecurring,isAdmin,currentUserId}){
-        const [teacherId,setTeacherId]=useState(initial?.teacherId || (isAdmin ? (teachers.find(t=>t.id===currentUserId)?.id || teachers[0]?.id || "") : (currentUserId || "")));
-        const [note,setNote]=useState(initial?.note||"");
-
+      function ReservationDialog({open,onClose,onSave,onDelete,onSkip,teachers,initial,room,dateIso,period,editingRecurring,isAdmin,currentUserId}){
         const isRoom = room?.type==="room";
+        const [teacherId,setTeacherId]=useState(initial?.teacherId || (currentUserId || ""));
+        const [note,setNote]=useState(initial?.note||"");
         const [repeatOn,setRepeatOn]=useState(!!editingRecurring);
         const [repeatMode,setRepeatMode]=useState(editingRecurring?.mode || (isAdmin ? 'until' : 'weeks'));
         const [repeatWeeks,setRepeatWeeks]=useState(editingRecurring?.weeks || 4);
         const [allowElsewhere,setAllowElsewhere]=useState(!!editingRecurring?.allowElsewhere && isRoom);
 
         useEffect(()=>{ if(open){ setRepeatOn(!!editingRecurring); setRepeatMode(editingRecurring?.mode || (isAdmin ? 'until' : 'weeks')); setRepeatWeeks(editingRecurring?.weeks||4); setAllowElsewhere(!!editingRecurring?.allowElsewhere && isRoom);} },[open,initial,room,editingRecurring]);
-        useEffect(()=>{ 
-          if(open && !initial?.teacherId){
-            setTeacherId(isAdmin ? (currentUserId || teachers[0]?.id || "") : (currentUserId || ""));
-          }
-        },[open,teachers,currentUserId,isAdmin,initial]);
+        useEffect(()=>{ if(open && !initial?.teacherId){ setTeacherId(currentUserId || teachers[0]?.id || ""); } },[open,teachers,currentUserId,initial]);
 
         if(!open) return null;
+        const editing = !!initial;
+        const isRecurring = !!editingRecurring;
+        const past = dateIso && cmpISO(dateIso, toISO(new Date())) < 0;
+        const dayName = dateIso ? capitalize(fullDateCz(parseISO(dateIso)).split(',')[0]) : '';
+
         return (
-          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30">
-            <div className="bg-white rounded-2xl shadow-xl w-full max-w-md p-4 max-h-[90vh] overflow-y-auto">
-              <div className="flex items-center justify-between mb-3">
-                <h3 className="text-lg font-semibold">{editingRecurring?"Upravit opakování":(initial?"Upravit rezervaci":"Nová rezervace")}</h3>
-                <button onClick={onClose} className="p-2 rounded-full hover:bg-gray-100">✕</button>
-              </div>
-
-              <div className="text-sm text-gray-700 bg-gray-50 border rounded-xl px-3 py-2 mb-3">
-                <span className="font-medium">{room?.name || '—'}</span>
-                {' · '}{dateIso ? fullDateCz(parseISO(dateIso)) : ''}
-                {' · '}{periodLabel(period)}
-              </div>
-
-              {isAdmin ? (
-                <label className="block text-sm mb-2">Učitel/ka
-                  <select className="w-full border rounded-xl px-3 py-2 mt-1" value={teacherId} onChange={e=>setTeacherId(e.target.value)}>
-                    {teachers.map(t=>(
-                      <option key={t.id} value={t.id}>{t.name}</option>
-                    ))}
-                  </select>
-                </label>
-              ) : (
-                <div className="text-sm mb-2">
-                  <div className="text-gray-600 mb-1">Učitel/ka</div>
-                  <div className="px-3 py-2 border rounded-xl bg-gray-50">{teachers.find(t=>t.id===currentUserId)?.name || '—'}</div>
+          <div className="overlay" onClick={onClose}>
+            <div className="modal" onClick={e=>e.stopPropagation()}>
+              <div className="modal-head">
+                <div>
+                  <div className="mh-t">{isRecurring?"Upravit opakování":(editing?"Upravit rezervaci":"Nová rezervace")}</div>
+                  <div className="mh-s">{room?.name || '—'} · {periodLabel(period)} · {dateIso ? fullDateCz(parseISO(dateIso)) : ''}</div>
                 </div>
-              )}
+                <button className="x-btn" onClick={onClose}><IconClose/></button>
+              </div>
 
-              <label className="block text-sm">Poznámka (volit.)
-                <input className="w-full border rounded-xl px-3 py-2 mt-1" value={note} onChange={e=>setNote(e.target.value)}/>
-              </label>
+              <div className="modal-body">
+                {past && <div className="banner warn"><IconAlert/> Vybraný den je v minulosti.</div>}
 
-              <div className="mt-4 border-t pt-3">
-                <div className="text-sm font-medium mb-2">Opakovat každý týden</div>
-                <div className="inline-flex rounded-xl border overflow-hidden mb-3">
-                  <button type="button" className={`px-3 py-1 ${!repeatOn ? 'bg-black text-white' : 'bg-white'}`} onClick={()=>setRepeatOn(false)}>Vypnuto</button>
-                  <button type="button" className={`px-3 py-1 ${ repeatOn ? 'bg-black text-white' : 'bg-white'}`} onClick={()=>setRepeatOn(true)}>Zapnuto</button>
+                {isAdmin ? (
+                  <div className="field">
+                    <label>Učitel/ka <span className="role-pill admin" style={{marginLeft:'4px'}}><IconShield size={11}/> za kohokoli</span></label>
+                    <select className="select" value={teacherId} onChange={e=>setTeacherId(e.target.value)}>
+                      {teachers.map(t=>(<option key={t.id} value={t.id}>{t.name}</option>))}
+                    </select>
+                  </div>
+                ) : (
+                  <div className="field">
+                    <label>Učitel/ka</label>
+                    <div className="locked-field"><span className="avatar" style={{width:'22px',height:'22px',fontSize:'9px'}}>{initialsOf(teachers.find(t=>t.id===currentUserId)?.name||'')}</span>{teachers.find(t=>t.id===currentUserId)?.name || '—'}</div>
+                  </div>
+                )}
+
+                <div className="field">
+                  <label>Poznámka <span style={{fontWeight:500,color:'var(--text-faint)'}}>(volitelné)</span></label>
+                  <input className="input" value={note} placeholder="Např. třída, předmět…" onChange={e=>setNote(e.target.value)}/>
+                </div>
+
+                <div className="divider"></div>
+
+                <div className="toggle-row">
+                  <div>
+                    <div style={{fontWeight:600,fontSize:'13.5px'}}>Opakovat každý týden</div>
+                    <div className="helptext">Stejný čas i učebna po několik týdnů.</div>
+                  </div>
+                  <label className="switch"><input type="checkbox" checked={repeatOn} onChange={e=>setRepeatOn(e.target.checked)} /><span className="track"></span></label>
                 </div>
 
                 {editingRecurring && !repeatOn && (
-                  <div className="text-xs text-amber-800 bg-amber-50 border border-amber-300 rounded-xl px-3 py-2 mb-3">
-                    Pozor: vypnutím opakování se zruší celá série. Zůstane jen jednorázová rezervace na vybraný den.
-                  </div>
+                  <div className="banner warn"><IconAlert/> Vypnutím opakování se zruší celá série. Zůstane jen jednorázová rezervace na vybraný den.</div>
                 )}
 
                 {repeatOn && (
-                  <div className="space-y-3">
-                    <div className="text-sm">
-                      <div className="mb-1">Délka opakování</div>
-                      <div className="inline-flex rounded-xl border overflow-hidden">{isAdmin && (
-                        <button type="button" className={`px-3 py-1 ${repeatMode==='until' ? 'bg-black text-white':'bg-white'}`} onClick={()=>setRepeatMode('until')}>Do konce roku</button>
-                        )}<button type="button" className={`px-3 py-1 ${repeatMode==='weeks' ? 'bg-black text-white':'bg-white'}`} onClick={()=>setRepeatMode('weeks')}>Počet týdnů</button>
+                  <>
+                    <div className="field">
+                      <label>Délka opakování</label>
+                      <div className="miniseg">
+                        <button className={repeatMode==='weeks'?'on':''} onClick={()=>setRepeatMode('weeks')}>Počet týdnů</button>
+                        {isAdmin && <button className={repeatMode==='until'?'on':''} onClick={()=>setRepeatMode('until')}>Do konce roku</button>}
                       </div>
+                      {!isAdmin && <div className="helptext" style={{marginTop:'6px'}}>„Do konce roku“ může nastavit jen administrátor.</div>}
                     </div>
-
                     {repeatMode==='weeks' && (
-                      <label className="text-sm block">
-                        <span className="block mb-1">Počet týdnů</span>
-                        <input type="number" min="1" max="40" className="w-full border rounded-xl px-3 py-2"
-                          value={repeatWeeks} onChange={(e)=>setRepeatWeeks(Math.max(1, Math.min(40, Number(e.target.value)||1)))} />
-                      </label>
-                    )}
-
-                    {isRoom && (
-                      <div className="text-sm">
-                        <div className="mb-1">Místo konání</div>
-                        <div className="inline-flex rounded-xl border overflow-hidden">
-                          <button type="button" className={`px-3 py-1 ${!allowElsewhere ? 'bg-black text-white':'bg-white'}`} onClick={()=>setAllowElsewhere(false)}>Hodina musí být v učebně</button>
-                          <button type="button" className={`px-3 py-1 ${ allowElsewhere ? 'bg-black text-white':'bg-white'}`} onClick={()=>setAllowElsewhere(true)}>Hodina může být i jinde</button>
-                        </div>
-                        <div className="text-xs text-gray-600 mt-1">
-                          {allowElsewhere ? 'Opakované rezervace budou modře.' : 'Opakované rezervace budou žlutě.'}
-                        </div>
+                      <div className="field">
+                        <label>Počet týdnů</label>
+                        <input className="input" type="number" min="1" max="40" value={repeatWeeks} onChange={(e)=>setRepeatWeeks(Math.max(1, Math.min(40, Number(e.target.value)||1)))} style={{maxWidth:'120px'}} />
                       </div>
                     )}
-                  </div>
+                    {isRoom && (
+                      <div className="field">
+                        <label>Místo konání</label>
+                        <div className="miniseg">
+                          <button className={!allowElsewhere?'on':''} onClick={()=>setAllowElsewhere(false)}>Musí být v učebně</button>
+                          <button className={allowElsewhere?'on':''} onClick={()=>setAllowElsewhere(true)}>Může být i jinde</button>
+                        </div>
+                        <div className="banner" style={{marginTop:'9px'}}><IconInfo/>{allowElsewhere ? 'Opakované rezervace se zobrazí obrysově (učebnu lze v daný den uvolnit).' : 'Učebna bude na tento čas pevně blokovaná.'}</div>
+                      </div>
+                    )}
+                  </>
+                )}
+
+                {isRecurring && (
+                  <button className="btn" style={{justifyContent:'center'}} onClick={()=>{ if(window.confirm('Zrušit rezervaci jen pro tento den? Ostatní týdny série zůstanou.')){ onSkip(); onClose(); } }}>
+                    <IconBan size={15}/> Zrušit jen tento výskyt ({dayName})
+                  </button>
                 )}
               </div>
 
-              <div className="flex justify-end gap-2 mt-4">
-                <button onClick={onClose} className="px-3 py-2 rounded-xl border">Zrušit</button>
-                <button
+              <div className="modal-foot">
+                {editing && (
+                  <button className="btn ghost danger" style={{marginRight:'auto'}}
+                    onClick={()=>{ if(window.confirm(isRecurring?'Opravdu zrušit CELÉ opakování? Zruší se všechny týdny této série.':'Opravdu smazat tuto rezervaci?')){ onDelete(); onClose(); } }}>
+                    <IconTrash/> {isRecurring?'Zrušit celou sérii':'Smazat'}
+                  </button>
+                )}
+                <button className="btn" onClick={onClose}>Zrušit</button>
+                <button className="btn primary"
                   onClick={()=>{
-                    onSave({
-                      teacherId,
-                      note,
-                      repeat: repeatOn ? {
-                        mode: repeatMode,
-                        weeks: repeatWeeks || undefined,
-                        allowElsewhere: isRoom ? allowElsewhere : undefined,
-                      } : null,
-                    });
+                    onSave({ teacherId, note, repeat: repeatOn ? { mode: repeatMode, weeks: repeatWeeks || undefined, allowElsewhere: isRoom ? allowElsewhere : undefined } : null });
                     onClose();
-                  }}
-                  className="px-3 py-2 rounded-xl bg-black text-white"
-                >Uložit</button>
+                  }}>{editing?'Uložit změny':'Rezervovat'}</button>
               </div>
             </div>
           </div>
+        );
+      }
+
+      function Toast({ toast }){
+        if(!toast) return null;
+        return (
+          <div className={`toast ${toast.kind==='error'?'error':'ok'}`}>
+            {toast.kind==='error' ? <IconAlert size={16}/> : <IconCheck size={16}/>}
+            <span>{toast.msg}</span>
+          </div>
+        );
+      }
+
+      function Cell({ cell, teacherName, onOpen }){
+        if(!cell) return (<div className="cell free" onClick={onOpen}><span className="plus"><IconPlus size={13}/> Přidat</span></div>);
+        const kind = cellKind(cell);
+        const rec = kind!=='single';
+        const until = rec && cell.mode==='until';
+        return (
+          <div className={`cell ${kind}`} onClick={onOpen} title={teacherName}>
+            <div className="cell-top">
+              <span className="cell-ico">{rec ? (until ? <IconInfinity size={13}/> : <IconRepeat size={13}/>) : <IconUser size={13}/>}</span>
+              <span className="cell-teacher">{shortName(teacherName)}</span>
+            </div>
+            {cell.note ? <div className="cell-note">{cell.note}</div> : null}
+            {rec && <span className={`cell-tag ${until?'tag-year':'tag-weeks'}`}>{recLabel(cell)}</span>}
+          </div>
+        );
+      }
+
+      function GridTable({ rooms, periods, planFor, tName, onOpen }){
+        return (
+          <div className="table-scroll">
+            <table className="grid">
+              <thead><tr>
+                <th className="rowhead">Učebna / pomůcka</th>
+                {periods.map(p=>(
+                  <th key={p}>
+                    <span className="perno">{periodLabelShort(p)}</span>
+                    {!isHourPeriod(p) && <span style={{fontWeight:500,fontSize:'10.5px',textTransform:'none',letterSpacing:0,display:'block'}}>{BREAKS.find(b=>b.id===p)?.label||''}</span>}
+                  </th>
+                ))}
+              </tr></thead>
+              <tbody>
+                {rooms.map(room=>(
+                  <tr key={room.id}>
+                    <td className="roomcell">
+                      <div className="room-name">
+                        <span className={`room-ico ${room.type==='equipment'?'equip':''}`}>{roomIcon(room)}</span>
+                        <span className="room-meta">
+                          <span className="rn">{room.name}</span>
+                          <span className="rd"><span className="room-code">{room.code}</span> {room.floor}</span>
+                        </span>
+                      </div>
+                    </td>
+                    {periods.map(p=>{
+                      const cell = planFor(room.id,p);
+                      return (<td key={p} className="slot"><Cell cell={cell} teacherName={cell?tName(cell.teacherId):''} onOpen={()=>onOpen(room,p)} /></td>);
+                    })}
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        );
+      }
+
+      function MobileSchedule({ rooms, periods, planFor, tName, onOpen }){
+        return (
+          <div className="msched show-mobile">
+            {rooms.map(room=>(
+              <div className="mroom" key={room.id}>
+                <div className="mroom-head">
+                  <span className={`room-ico ${room.type==='equipment'?'equip':''}`}>{roomIcon(room)}</span>
+                  <span className="room-meta" style={{minWidth:0}}>
+                    <span className="rn">{room.name}</span>
+                    <span className="rd"><span className="room-code">{room.code}</span> {room.floor}</span>
+                  </span>
+                </div>
+                <div className="mperiods">
+                  {periods.map(p=>{
+                    const cell = planFor(room.id,p);
+                    const kind = cellKind(cell);
+                    return (
+                      <button key={p} className={`mperiod ${kind}`} onClick={()=>onOpen(room,p)}>
+                        <span className="mp-head"><span className="mp-no">{periodLabelShort(p)}</span></span>
+                        {cell ? (
+                          <>
+                            <span className="mp-body">{kind!=='single' && (cell.mode==='until'?<IconInfinity size={11}/>:<IconRepeat size={11}/>)}<span className="mp-who">{shortName(tName(cell.teacherId))}</span></span>
+                            {kind!=='single' && <span className={`mp-tag ${cell.mode==='until'?'tag-year':'tag-weeks'}`}>{recLabel(cell)}</span>}
+                          </>
+                        ) : <span className="mp-free"><IconPlus size={12}/> Volno</span>}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+            ))}
+          </div>
+        );
+      }
+
+      function WeekStrip({ days, selectedDate, summaryFor, onPick }){
+        return (
+          <div className="weekstrip">
+            {days.map(d=>{
+              const sel = isSameDay(d, selectedDate);
+              const today = isSameDay(d, new Date());
+              const items = summaryFor(d);
+              return (
+                <button key={toISO(d)} onClick={()=>onPick(d)} className={`daycard ${sel?'sel':''} ${today?'today':''}`}>
+                  <div className="dc-head"><span className="dc-dow">{dowCz(d)}{today?' · dnes':''}</span><span className="dc-date">{d.getDate()}.</span></div>
+                  <div className="dc-chips">
+                    {items.length===0 ? <span className="chip free"><IconCheck size={10}/> volno</span>
+                      : items.slice(0,8).map((it,i)=>(<span key={i} className={`chip ${it.kind}`}>{it.label} {it.code}</span>))}
+                    {items.length>8 && <span className="dc-empty">+{items.length-8}</span>}
+                  </div>
+                </button>
+              );
+            })}
+          </div>
+        );
+      }
+
+      function RoomsManager({ rooms, onReorder, onEdit, onDelete }){
+        const [dragId,setDragId]=useState(null);
+        const [overId,setOverId]=useState(null);
+        const reset=()=>{ setDragId(null); setOverId(null); };
+        const handleDrop=(targetId)=>{
+          if(!dragId || dragId===targetId){ reset(); return; }
+          const list=[...rooms];
+          const from=list.findIndex(r=>r.id===dragId);
+          const to=list.findIndex(r=>r.id===targetId);
+          if(from<0 || to<0){ reset(); return; }
+          const [moved]=list.splice(from,1);
+          list.splice(to,0,moved);
+          onReorder(list);
+          reset();
+        };
+        return (
+          <>
+            <div className="reorder-hint"><IconGrip size={14}/> Přetažením změníte pořadí — stejně se zobrazí učitelům v rozvrhu.</div>
+            <div className="roomsort">
+              {rooms.map(r=>(
+                <div key={r.id}
+                  className={`roomsort-row ${dragId===r.id?'dragging':''} ${overId===r.id&&dragId!==r.id?'dragover':''}`}
+                  draggable
+                  onDragStart={(e)=>{ setDragId(r.id); e.dataTransfer.effectAllowed='move'; }}
+                  onDragEnter={()=>setOverId(r.id)}
+                  onDragOver={(e)=>e.preventDefault()}
+                  onDrop={()=>handleDrop(r.id)}
+                  onDragEnd={reset}>
+                  <span className="grip" title="Přetáhnout"><IconGrip size={17}/></span>
+                  <span className={`room-ico ${r.type==='equipment'?'equip':''}`}>{roomIcon(r)}</span>
+                  <div style={{minWidth:0,flex:1,cursor:'pointer'}} onClick={()=>onEdit(r)} title="Upravit">
+                    <div className="lr-t">{r.name}</div>
+                    <div className="ph-sub"><span className="room-code">{r.code}</span> {r.floor} · {r.type==='equipment'?`pomůcka${r.max?` · max ${r.max}`:''}`:'učebna'} · {(r.usage||'hours')==='hours'?'hodiny':(r.usage==='breaks'?'přestávky':'obojí')}</div>
+                  </div>
+                  <button className="btn icon ghost danger" title="Smazat" onClick={()=>onDelete(r)}><IconTrash size={15}/></button>
+                </div>
+              ))}
+            </div>
+          </>
         );
       }
 
@@ -349,6 +914,7 @@
         const selectedIso = toISO(selectedDate);
 
         const [viewMode,setViewMode]=useState('hours'); // 'hours' | 'breaks'
+        const [view,setView]=useState('rozvrh');         // 'rozvrh' | 'moje' | 'nastaveni'
 
         // auth & role
         const [authUser,setAuthUser]=useState(null);
@@ -363,40 +929,34 @@
         const [recurring,setRecurring]=useState([]);
         const [allUsers,setAllUsers]=useState([]);
         const [allowlist,setAllowlist]=useState([]);
-        const [showSettings,setShowSettings]=useState(false);
         const [dateModal,setDateModal]=useState(false);
         const [editingRoom,setEditingRoom]=useState(null);
         const [creatingRoom,setCreatingRoom]=useState(false);
         const [dialog,setDialog]=useState(null);
 
-        // moje přehledy (uživatel)
+        // moje přehledy
         const [mySingles,setMySingles]=useState([]);
         const [myRecurring,setMyRecurring]=useState([]);
-        const [showMySingles,setShowMySingles]=useState(false);
-        const [showMyRecurring,setShowMyRecurring]=useState(false);
 
         // detail cizí rezervace (jen ke čtení)
         const [detail,setDetail]=useState(null);
 
-        // chybová/informační hláška
+        // toast
         const [toast,setToast]=useState(null);
         const showToast = (msg, kind='error')=>{
           setToast({msg, kind});
           window.clearTimeout(showToast._t);
           showToast._t = window.setTimeout(()=>setToast(null), 6000);
         };
-        // obal pro zápisy do Firestore – při selhání zobrazí hlášku
         const guard = async (fn, failMsg)=>{
           try{ await fn(); }
           catch(err){ console.error(err); showToast(`${failMsg} (${err?.message || err})`); }
         };
 
-        // hooky, které musí být vždy volané
         const workweek = useMemo(()=>{
           const start = startOfWeek(selectedDate);
           return [0,1,2,3,4].map(off=>addDays(start,off));
         },[selectedDate]);
-
 
         const visiblePeriods = useMemo(()=> (viewMode==='hours' ? HOURS_PERIODS : BREAK_PERIODS), [viewMode]);
         const visibleRooms = useMemo(()=>{
@@ -406,12 +966,10 @@
           });
         }, [rooms, viewMode]);
 
-        // Range ISO pro aktuální týden
         const weekStartIso = toISO(startOfWeek(selectedDate));
         const weekEndIso = toISO(addDays(startOfWeek(selectedDate), 4));
 
-        // auth – vlastní dokument sledujeme přes onSnapshot, aby se schválení
-        // nebo změna role projevily okamžitě bez nového přihlášení
+        // auth – vlastní dokument přes onSnapshot (schválení/role hned)
         useEffect(()=>{
           let unsubMe = null;
           const unsub = auth.onAuthStateChanged(async (u)=>{
@@ -466,7 +1024,7 @@
           return ()=>unsub&&unsub();
         },[!!authUser, !!me, waitingApproval]);
 
-        // allowlist (pro zobrazení v nastavení) – security rules dovolují výpis jen adminovi
+        // allowlist (jen admin)
         useEffect(()=>{
           if(!authUser || !me || waitingApproval || !me.isAdmin) return;
           const unsub = db.collection('allowlist').onSnapshot(q=>{
@@ -475,16 +1033,18 @@
           return ()=>unsub&&unsub();
         },[!!authUser, !!me, waitingApproval, !!me?.isAdmin]);
 
-        // rooms
+        // rooms – řazení klientsky podle `order`, pak podle názvu
         useEffect(()=>{
           if(!authUser || !me || waitingApproval) return;
-          const unsub = db.collection('rooms').orderBy('name','asc').onSnapshot(q=>{
-            setRooms(q.docs.map(d=>({id:d.id, ...d.data()})));
+          const unsub = db.collection('rooms').onSnapshot(q=>{
+            const list = q.docs.map(d=>({id:d.id, ...d.data()}));
+            list.sort((a,b)=> (a.order ?? 1e9) - (b.order ?? 1e9) || (a.name||'').localeCompare(b.name||'','cs'));
+            setRooms(list);
           });
           return ()=>unsub&&unsub();
         },[!!authUser, !!me, waitingApproval]);
 
-        // reservations (jen vybraný den pro tabulku níže)
+        // reservations (vybraný den)
         useEffect(()=>{
           if(!authUser || !me || waitingApproval) return;
           const unsub = db.collection('reservations').where('dateISO','==',selectedIso).onSnapshot(q=>{
@@ -508,7 +1068,7 @@
           return ()=>unsub&&unsub();
         },[!!authUser, !!me, waitingApproval]);
 
-        // --- Singles pro celý týden do horního náhledu ---
+        // Singles pro celý týden (horní náhled)
         const [weeklySingles,setWeeklySingles]=useState({});
         useEffect(()=>{
           if(!authUser || !me || waitingApproval) return;
@@ -531,7 +1091,6 @@
         // occursOn
         function occursOn(dateISO, rec){
           if(cmpISO(dateISO, rec.startISO) < 0) return false;
-          // zrušené jednotlivé výskyty série
           if(Array.isArray(rec.exceptions) && rec.exceptions.includes(dateISO)) return false;
           const days = diffDays(dateISO, rec.startISO);
           if(days % 7 !== 0) return false;
@@ -543,7 +1102,7 @@
           return true;
         }
 
-        // effective plan
+        // effective plan (singles + recurring)
         const effectivePlan = useMemo(()=>{
           const plan = JSON.parse(JSON.stringify(reservations||{}));
           (recurring||[]).forEach(r=>{
@@ -552,30 +1111,56 @@
             if(!plan[r.roomId][r.period]){
               plan[r.roomId][r.period] = {
                 teacherId:r.teacherId, note:r.note,
-                recurringId:r.id, allowElsewhere: !!r.allowElsewhere, createdBy:r.createdBy
+                recurringId:r.id, allowElsewhere: !!r.allowElsewhere,
+                mode:r.mode, weeks:r.weeks, createdBy:r.createdBy
               };
             }
           });
           return plan;
         },[reservations, recurring, selectedIso]);
 
+        const planFor = (roomId, period)=> (effectivePlan?.[roomId]?.[period]) || null;
+        const tName = (id)=> teachers.find(t=>t.id===id)?.name || allUsers.find(u=>u.id===id)?.displayName || '—';
+
+        // souhrn pro týdenní pruh
+        const summaryFor = (day)=>{
+          const iso = toISO(day);
+          const allowed = new Set(visiblePeriods.map(String));
+          const out = [];
+          (weeklySingles[iso]||[]).filter(r=>allowed.has(String(r.period))).forEach(r=>{
+            out.push({ kind:'single', label:periodLabelShort(String(r.period)), code:(rooms.find(x=>x.id===r.roomId)?.code||'?'), period:String(r.period) });
+          });
+          (recurring||[]).filter(r=>occursOn(iso,r) && allowed.has(String(r.period))).forEach(r=>{
+            out.push({ kind: r.allowElsewhere ? 'rec-alt' : 'rec', label:periodLabelShort(String(r.period)), code:(rooms.find(x=>x.id===r.roomId)?.code||'?'), period:String(r.period) });
+          });
+          return out.sort((a,b)=> periodOrder(a.period)-periodOrder(b.period) || a.code.localeCompare(b.code));
+        };
+
         // CRUD rooms
         const addRoom = async payload=>{
-          const body = { name:payload.name, floor:payload.floor, code:payload.code, type:payload.type, usage: payload.usage || 'hours' };
+          const body = { name:payload.name, floor:payload.floor, code:payload.code, type:payload.type, usage: payload.usage || 'hours', order: (rooms?.length||0) };
           if(payload.type==='equipment'){ body.max = Math.max(1, Number(payload.max)||1); }
           await db.collection('rooms').add(body);
         };
         const updateRoom = async (id, patch)=>{
           const body = {...patch};
-          // nikdy neposílat undefined do Firestore
           Object.keys(body).forEach(k=>{ if(body[k]===undefined) delete body[k]; });
           if(body.type !== 'equipment'){ delete body.max; }
           await db.collection('rooms').doc(id).set(body, {merge:true});
         };
         const removeRoom = async id => { await db.collection('rooms').doc(id).delete(); };
+        // drag & drop řazení – uloží sekvenční `order` všem učebnám jednou dávkou
+        const reorderRooms = (newList)=>{
+          setRooms(newList); // optimisticky
+          guard(async ()=>{
+            const batch = db.batch();
+            newList.forEach((r,i)=> batch.update(db.collection('rooms').doc(r.id), { order:i }));
+            await batch.commit();
+            showToast('Pořadí učeben uloženo.', 'ok');
+          }, 'Pořadí učeben se nepodařilo uložit');
+        };
 
         // ---------- kontrola kolizí ----------
-        // všechny dny, kdy se série koná (max ~45 týdnů = školní rok)
         function seriesDates(startISO, endISO){
           const dates = [];
           let d = startISO, i = 0;
@@ -586,14 +1171,11 @@
           }
           return dates;
         }
-        // jednorázové rezervace na stejném slotu v zadaných dnech
-        // (dotaz jen s rovnostmi – nevyžaduje composite index, dny filtrujeme lokálně)
         async function findSingleConflicts(dates, roomId, period, excludeId){
           const q = await db.collection('reservations').where('roomId','==',roomId).where('period','==',period).get();
           const set = new Set(dates);
           return q.docs.filter(d=> d.id!==excludeId && set.has(d.data().dateISO)).map(d=>d.data().dateISO);
         }
-        // opakované rezervace na stejném slotu, které se konají v některý ze zadaných dnů
         function findRecurringConflicts(dates, roomId, period, excludeRecId){
           const out = [];
           (recurring||[]).forEach(rec=>{
@@ -651,11 +1233,9 @@
                 rec.allowElsewhere = !!payload.repeat.allowElsewhere;
               }
 
-              // kolize se kontrolují pro všechny budoucí výskyty série
               const dates = seriesDates(rec.startISO, rec.endISO);
               if(!await assertNoConflicts(dates, roomId, period, existingSingleId, editingRecurringId)) return;
 
-              // při převodu jednorázové na opakovanou se maže jen editovaný dokument
               if(existingSingleId){ await db.collection('reservations').doc(existingSingleId).delete(); }
 
               if(editingRecurringId){
@@ -677,7 +1257,6 @@
               await db.collection('reservations').add(single);
             }
           } else if(existingSingleId){
-            // úprava existující jednorázové rezervace – update místo nového dokumentu
             await db.collection('reservations').doc(existingSingleId).update({
               teacherId: teacherForSave,
               note: payload.note || '',
@@ -702,7 +1281,6 @@
           for(const d of q.docs) await d.ref.delete();
         }
         async function stopRecurring(id){ await db.collection('recurring').doc(id).delete(); }
-        // zruší jediný výskyt série (přidá den do výjimek)
         async function skipOccurrence(recId, dateIso){
           await db.collection('recurring').doc(recId).update({
             exceptions: firebase.firestore.FieldValue.arrayUnion(dateIso),
@@ -712,7 +1290,6 @@
         const canUseApp = !!authUser && !!me && me.approved;
         const isAdmin   = !!me?.isAdmin;
 
-        // vlastníkem je ten, kdo rezervaci vytvořil, NEBO učitel, na kterého je psaná
         const ownsCell = (cell)=> !!(authUser?.uid && cell && (cell.createdBy===authUser.uid || cell.teacherId===authUser.uid));
 
         const openCell = (room, period)=>{
@@ -735,9 +1312,7 @@
           }
         };
 
-        // ---------- moje seznamy (jen pokud je uživatel schválen) ----------
-        // „moje“ = vytvořil(a) jsem, NEBO je psaná na mě (např. od admina);
-        // Firestore neumí OR, proto dva listenery a sloučení podle ID
+        // ---------- moje seznamy ----------
         useEffect(()=>{
           if(!authUser || !me || waitingApproval) return;
           const uid = authUser.uid;
@@ -751,7 +1326,6 @@
             setter(arr);
           };
 
-          // Bez orderBy => nepotřebuje composite index
           const singleStore = {};
           const recStore = {};
           const unsubs = [
@@ -777,16 +1351,13 @@
         },[!!authUser, !!me, waitingApproval]);
 
         // ---------- jednorázová migrace dat posunutých o den ----------
-        // Stará verze toISO() ukládala datumy o den menší (chyba časového pásma).
-        // Nástroj posune všechna uložená data o +1 den; provádí se jen jednou,
-        // provedení je poznamenané v meta/migrations.
         const [migrationDone,setMigrationDone]=useState(null);
         useEffect(()=>{
-          if(!isAdmin || !showSettings) return;
+          if(!isAdmin || view!=='nastaveni') return;
           db.collection('meta').doc('migrations').get()
             .then(s=>setMigrationDone(!!(s.exists && s.data().dateShiftFixed)))
             .catch(()=>setMigrationDone(null));
-        },[isAdmin, showSettings]);
+        },[isAdmin, view]);
 
         async function runDateShiftMigration(){
           const shift = iso => toISO(addDays(parseISO(iso), 1));
@@ -807,7 +1378,7 @@
           });
           let count = 0;
           while(ops.length){
-            const chunk = ops.splice(0, 400); // limit batch je 500 operací
+            const chunk = ops.splice(0, 400);
             const batch = db.batch();
             chunk.forEach(o=>batch.update(o.ref, o.patch));
             await batch.commit();
@@ -825,7 +1396,6 @@
         const todayIso = toISO(new Date());
         const mySinglesActive = useMemo(()=> mySingles.filter(s=> s.dateISO && cmpISO(s.dateISO, todayIso) >= 0), [mySingles, todayIso]);
         const myRecurringActive = useMemo(()=> myRecurring.filter(r=> !r.endISO || cmpISO(r.endISO, todayIso) >= 0), [myRecurring, todayIso]);
-        // nejbližší budoucí výskyt série (kvůli prokliku na den)
         const nextOccurrenceISO = (rec)=>{
           let d = cmpISO(rec.startISO, todayIso) >= 0 ? rec.startISO : todayIso;
           for(let i=0; i<60; i++){
@@ -836,17 +1406,21 @@
           return null;
         };
 
-        // ---------- podmíněné obrazovky (po VŠECH hookách) ----------
+        // udržet platný view podle role
+        useEffect(()=>{ if(!isAdmin && view==='nastaveni') setView('rozvrh'); },[isAdmin, view]);
+
+        // ---------- podmíněné obrazovky ----------
         if(loadingAuth){
-          return <div className="max-w-3xl mx-auto p-8">Načítám přihlášení…</div>;
+          return <div style={{padding:'40px',textAlign:'center',color:'var(--text-muted)'}}>Načítám přihlášení…</div>;
         }
         if(!authUser){
           return (
-            <div className="min-h-[70vh] flex items-center justify-center p-6">
-              <div className="bg-white/80 rounded-2xl shadow p-6 max-w-md w-full">
-                <h1 className="text-2xl font-bold mb-4">Rezervace Chromebooků a učeben</h1>
-                <p className="mb-4 text-gray-700">Pro pokračování se přihlas svým Google účtem.</p>
-                <button className="px-4 py-2 rounded-xl bg-black text-white w-full"
+            <div className="auth-wrap">
+              <div className="auth-card">
+                <div className="brand" style={{marginBottom:'18px'}}><div className="brand-mark">BMA</div><div className="brand-text"><div className="t1">Rezervace BMA</div><div className="t2">Chromebooky &amp; učebny</div></div></div>
+                <h1 style={{fontSize:'20px',fontWeight:700,margin:'0 0 8px'}}>Přihlášení</h1>
+                <p style={{color:'var(--text-muted)',fontSize:'14px',margin:'0 0 18px'}}>Pro pokračování se přihlas svým Google účtem.</p>
+                <button className="btn primary" style={{width:'100%',justifyContent:'center'}}
                   onClick={()=>auth.signInWithPopup(new firebase.auth.GoogleAuthProvider())}>Přihlásit se Googlem</button>
               </div>
             </div>
@@ -854,322 +1428,235 @@
         }
         if(authUser && !canUseApp){
           return (
-            <div className="min-h-[70vh] flex items-center justify-center p-6">
-              <div className="bg-white/80 rounded-2xl shadow p-6 max-w-md w-full">
-                <h1 className="text-2xl font-bold mb-2">Účet čeká na schválení</h1>
-                <p className="text-gray-700">Tento účet zatím není schválený administrátorem.</p>
-                <div className="mt-4 text-sm text-gray-600">Přihlášen: {authUser.email}</div>
-                <div className="mt-6"><button className="px-3 py-2 rounded-xl border" onClick={()=>auth.signOut()}>Odhlásit</button></div>
+            <div className="auth-wrap">
+              <div className="auth-card">
+                <h1 style={{fontSize:'20px',fontWeight:700,margin:'0 0 8px'}}>Účet čeká na schválení</h1>
+                <p style={{color:'var(--text-muted)',fontSize:'14px',margin:'0 0 6px'}}>Tento účet zatím není schválený administrátorem.</p>
+                <div style={{fontSize:'13px',color:'var(--text-faint)',marginBottom:'18px'}}>Přihlášen: {authUser.email}</div>
+                <button className="btn" onClick={()=>auth.signOut()}>Odhlásit</button>
               </div>
             </div>
           );
         }
 
+        const navDefs = isAdmin
+          ? [{id:'rozvrh',label:'Rozvrh',icon:<IconCalendar/>},{id:'moje',label:'Moje rezervace',icon:<IconList/>},{id:'nastaveni',label:'Nastavení',icon:<IconSettings/>}]
+          : [{id:'rozvrh',label:'Rozvrh',icon:<IconCalendar/>},{id:'moje',label:'Moje rezervace',icon:<IconList/>}];
+
         // ---------- hlavní UI ----------
         return (
-          <div className="p-4 max-w-7xl mx-auto grid gap-4">
-            {toast && (
-              <div className={`fixed bottom-4 left-1/2 -translate-x-1/2 z-[60] px-4 py-2 rounded-xl shadow-lg text-sm max-w-md ${toast.kind==='error'?'bg-red-600 text-white':'bg-emerald-600 text-white'}`}>
-                {toast.msg}
+          <div className="app">
+            <header className="appbar">
+              <div className="brand">
+                <div className="brand-mark">BMA</div>
+                <div className="brand-text brand-collapse"><div className="t1">Rezervace</div></div>
               </div>
-            )}
-            <header className="flex items-center justify-between">
-              <h1 className="text-2xl font-bold">Rezervace Chromebooků a učeben</h1>
-              <div className="flex items-center gap-2">
-                <div className="inline-flex rounded-xl border overflow-hidden bg-white">
-                  <button className={`px-3 py-2 ${viewMode==='hours'?'bg-black text-white':'bg-white'}`} onClick={()=>setViewMode('hours')}>Hodiny</button>
-                  <button className={`px-3 py-2 ${viewMode==='breaks'?'bg-black text-white':'bg-white'}`} onClick={()=>setViewMode('breaks')}>Přestávky</button>
-                </div>
+              <nav className="topnav ctrl-nav">
+                {navDefs.map(it=>(
+                  <button key={it.id} className={`nav-item ${view===it.id?'active':''}`} onClick={()=>setView(it.id)}>{it.icon}{it.label}</button>
+                ))}
+              </nav>
+              <div className="spacer"></div>
 
-                <button onClick={()=>setSelectedDate(addWeeks(selectedDate,-1))} title="Předchozí týden" className="px-3 py-2 rounded-xl border bg-white">◀◀</button>
-                <button onClick={()=>setSelectedDate(addWeekday(selectedDate,-1))} title="Předchozí den" className="px-3 py-2 rounded-xl border bg-white">◀</button>
-                <button onClick={()=>setSelectedDate(toWeekday(new Date()))} className="px-3 py-2 rounded-xl border bg-white">Dnes</button>
-                <button onClick={()=>setDateModal(true)} className="px-3 py-2 rounded-xl border bg-white">📅 Datum</button>
-                <button onClick={()=>setSelectedDate(addWeekday(selectedDate,1))} title="Další den" className="px-3 py-2 rounded-xl border bg-white">▶</button>
-                <button onClick={()=>setSelectedDate(addWeeks(selectedDate,1))} title="Další týden" className="px-3 py-2 rounded-xl border bg-white">▶▶</button>
-                {isAdmin && (<button onClick={()=>setShowSettings(s=>!s)} className="px-3 py-2 rounded-xl border bg-white">{showSettings?'Skrýt nastavení':'Nastavení'}</button>)}
-                <button onClick={()=>auth.signOut()} className="px-3 py-2 rounded-xl border bg-white">Odhlásit</button>
+              {view==='rozvrh' && (
+                <>
+                  <div className="seg desk-ctrl">
+                    <button className={viewMode==='hours'?'on':''} onClick={()=>setViewMode('hours')}>Hodiny</button>
+                    <button className={viewMode==='breaks'?'on':''} onClick={()=>setViewMode('breaks')}>Přestávky</button>
+                  </div>
+                  <div className="weeknav desk-ctrl">
+                    <button className="btn icon" title="Předchozí týden" onClick={()=>setSelectedDate(addWeeks(selectedDate,-1))}><IconChevLL size={15}/></button>
+                    <button className="btn icon" title="Předchozí den" onClick={()=>setSelectedDate(addWeekday(selectedDate,-1))}><IconChevL size={15}/></button>
+                    <button className="btn" onClick={()=>setSelectedDate(toWeekday(new Date()))}>Dnes</button>
+                    <button className="date-pill" title="Vybrat datum" onClick={()=>setDateModal(true)}><IconCalendar size={15}/> {shortDateCz(selectedDate)}</button>
+                    <button className="btn icon" title="Další den" onClick={()=>setSelectedDate(addWeekday(selectedDate,1))}><IconChevR size={15}/></button>
+                    <button className="btn icon" title="Další týden" onClick={()=>setSelectedDate(addWeeks(selectedDate,1))}><IconChevRR size={15}/></button>
+                  </div>
+                  <div className="bar-divider desk-ctrl"></div>
+                </>
+              )}
+
+              <div className="user-chip-top">
+                <div className="avatar" style={isAdmin?{background:'var(--gold-strong)'}:null}>{initialsOf(me.displayName||me.email)}</div>
+                <div className="user-meta hide-mobile">
+                  <div className="un">{stripTitle(me.displayName||me.email)}</div>
+                  <div className="ur">{isAdmin?'Administrátor':'Učitel'}</div>
+                </div>
+                <button className="btn icon ghost" title="Odhlásit" onClick={()=>auth.signOut()}><IconLogout size={16}/></button>
               </div>
             </header>
 
-            <DateModal open={dateModal} valueISO={toISO(selectedDate)} onClose={()=>setDateModal(false)} onChange={(v)=>v&&setSelectedDate(toWeekday(parseISO(v)))}/>
-
-            {/* Týdenní panel (náhled ze singles + recurring) */}
-            <section className="bg-white/80 rounded-2xl p-4">
-              <div className="hidden sm:grid grid-cols-5 text-center text-xs font-medium text-gray-600 mb-2">{["Po","Út","St","Čt","Pá"].map((n,i)=><div key={i} className="py-1">{n}</div>)}</div>
-              <div className="sm:grid sm:grid-cols-5 gap-2 flex overflow-x-auto -mx-2 px-2">
-                {workweek.map(d=>{
-                  const sel = isSameDay(d, selectedDate);
-                  const isToday = isSameDay(d, new Date());
-                  const iso = toISO(d);
-                  // singles z weeklySingles
-                  const allowedSet = new Set(visiblePeriods);
-                  const singles = (weeklySingles[iso]||[])
-                    .filter(r=>allowedSet.has(String(r.period)))
-                    .map(r=>({
-                      period:String(r.period),
-                      code:(rooms.find(x=>x.id===r.roomId)?.code||"?"),
-                      kind:'single'
-                    }));
-                  // recurring v ten den
-                  const recs = (recurring||[])
-                    .filter(r=>occursOn(iso,r) && allowedSet.has(String(r.period)))
-                    .map(r=>({
-                      period:String(r.period),
-                      code:(rooms.find(x=>x.id===r.roomId)?.code||"?"),
-                      kind: r.allowElsewhere ? 'rec-blue' : 'rec-amber'
-                    }));
-                  const items = [...singles, ...recs]
-                    .sort((a,b)=> periodOrder(a.period)-periodOrder(b.period) || a.code.localeCompare(b.code));
-                  return (
-                    <button key={toISO(d)} onClick={()=>setSelectedDate(d)} className={`sm:h-28 h-24 sm:w-auto w-40 shrink-0 rounded-2xl border p-2 text-left bg-white hover:shadow ${sel?'ring-2 ring-fuchsia-400':''} ${isToday?'border-fuchsia-500 border-2':''}`}>
-                      <div className={`text-sm font-semibold ${isToday?'text-fuchsia-700':''}`}>{shortDateCz(d)}{isToday?' · dnes':''}</div>
-                      <div className="mt-1 flex flex-wrap gap-1">
-                        {items.length===0 ? <Badge className="bg-green-100 border border-green-400 text-green-800">volno</Badge>
-                          : items.map((it,idx)=>{
-                              let cls = "bg-red-100 border border-red-400 text-red-800";
-                              if(it.kind==='rec-blue') cls = "bg-blue-100 border border-blue-400 text-blue-800";
-                              if(it.kind==='rec-amber') cls = "bg-amber-100 border border-amber-400 text-amber-900";
-                              return <Badge key={idx} className={cls}>{periodLabelShort(it.period)} {it.code}</Badge>;
-                            })}
-                      </div>
-                    </button>
-                  );
-                })}
-              </div>
-              <div className="mt-3 flex flex-wrap gap-x-4 gap-y-1 text-xs text-gray-700">
-                <span className="inline-flex items-center gap-1.5"><span className="w-3 h-3 rounded bg-green-100 border border-green-400 inline-block"></span>volno</span>
-                <span className="inline-flex items-center gap-1.5"><span className="w-3 h-3 rounded bg-red-100 border border-red-400 inline-block"></span>jednorázová rezervace</span>
-                <span className="inline-flex items-center gap-1.5"><span className="w-3 h-3 rounded bg-amber-100 border border-amber-400 inline-block"></span>opakovaná – hodina musí být v učebně</span>
-                <span className="inline-flex items-center gap-1.5"><span className="w-3 h-3 rounded bg-blue-100 border border-blue-400 inline-block"></span>opakovaná – hodina může být i jinde</span>
-              </div>
-            </section>
-
-            {/* Denní plán (effectivePlan = singles + recurring) */}
-            <section className="bg-white/80 rounded-2xl p-4">
-              <h2 className="text-lg font-semibold mb-2">{fullDateCz(selectedDate)}</h2>
-              <div className="-mx-2 sm:mx-0 overflow-x-auto">
-                <div className="min-w-[900px]">
-                  <table className="w-full text-sm">
-                    <thead><tr><th className="text-left p-2 sticky left-0 bg-white/90 backdrop-blur z-10">Učebna</th>{visiblePeriods.map(p=>
-                      <th key={p} className="p-2 min-w-28 text-center">{periodLabel(p)}</th>
-                    )}</tr></thead>
-                    <tbody>
-                      {visibleRooms.map(room=>(
-                        <tr key={room.id} className="odd:bg-white/60 even:bg-white/40">
-                          <th className="text-left p-2 sticky left-0 bg-white/80 backdrop-blur z-10">
-                            <div className="font-medium">{room.name}</div>
-                            <div className="mt-0.5 flex gap-2 items-center text-xs text-gray-700">
-                              <span className="px-1.5 py-0.5 rounded bg-gray-100 border">{room.floor}</span>
-                            </div>
-                          </th>
-                          {visiblePeriods.map(p=>{
-                            const cell = effectivePlan?.[room.id]?.[p];
-                            const isRecurring = !!cell?.recurringId;
-                            const recurringBlue = isRecurring && cell?.allowElsewhere;
-                            const cls = !cell ? CELLCLS.free : isRecurring ? (recurringBlue ? CELLCLS.recBlue : CELLCLS.recAmber) : CELLCLS.single;
-                            const canDelete = isAdmin || ownsCell(cell);
-                            return (
-                              <td key={p} className="align-top p-1">
-                                <div className={`rounded-xl p-2 min-h-16 ${cls}`} onClick={()=>openCell(room, p)}>
-                                  {cell ? (
-                                    <div className="flex flex-col gap-1">
-                                      <div className="font-medium flex items-center gap-2">
-                                        {(teachers.find(t=>t.id===cell.teacherId)?.name) || '—'}
-                                      </div>
-                                      {cell.note && <div className="text-xs">{cell.note}</div>}
-                                      <div className="flex gap-2 mt-1">
-                                        {isRecurring ? (
-                                          canDelete ? (
-                                            <React.Fragment>
-                                              <button className="px-2 py-1 rounded-lg border text-xs" onClick={(e)=>{e.stopPropagation(); if(window.confirm('Zrušit rezervaci jen pro tento den? Ostatní týdny série zůstanou.')) guard(()=>skipOccurrence(cell.recurringId, selectedIso), 'Výskyt se nepodařilo zrušit');}}>Zrušit tento den</button>
-                                              <button className="px-2 py-1 rounded-lg border text-xs" onClick={(e)=>{e.stopPropagation(); if(window.confirm('Opravdu zrušit CELÉ opakování? Zruší se všechny týdny této série.')) guard(()=>stopRecurring(cell.recurringId), 'Opakování se nepodařilo zrušit');}}>Zrušit opak.</button>
-                                            </React.Fragment>
-                                          ) : null
-                                        ) : canDelete ? (
-                                          <button className="px-2 py-1 rounded-lg border text-xs" onClick={(e)=>{e.stopPropagation(); if(window.confirm('Opravdu smazat tuto rezervaci?')) guard(()=>clearReservation(selectedIso, room.id, p), 'Rezervaci se nepodařilo smazat');}}>Smazat</button>
-                                        ) : null}
-                                      </div>
-                                    </div>
-                                  ) : <span className="w-full text-left text-xs block text-green-900">+ Přidat</span>}
-                                </div>
-                              </td>
-                            );
-                          })}
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
+            {view==='rozvrh' && (
+              <div className="mobile-controls">
+                <div className="seg" style={{flex:1}}>
+                  <button className={viewMode==='hours'?'on':''} style={{flex:1}} onClick={()=>setViewMode('hours')}>Hodiny</button>
+                  <button className={viewMode==='breaks'?'on':''} style={{flex:1}} onClick={()=>setViewMode('breaks')}>Přestávky</button>
+                </div>
+                <div className="weeknav">
+                  <button className="btn icon" title="Předchozí den" onClick={()=>setSelectedDate(addWeekday(selectedDate,-1))}><IconChevL size={15}/></button>
+                  <button className="btn" onClick={()=>setSelectedDate(toWeekday(new Date()))}>Dnes</button>
+                  <button className="btn icon" title="Datum" onClick={()=>setDateModal(true)}><IconCalendar size={15}/></button>
+                  <button className="btn icon" title="Další den" onClick={()=>setSelectedDate(addWeekday(selectedDate,1))}><IconChevR size={15}/></button>
                 </div>
               </div>
-            </section>
-
-            {/* Moje přehledy – zobrazují se jen aktuální a budoucí rezervace */}
-            <section className="bg-white/80 rounded-2xl p-4 space-y-4">
-                <div>
-                  <button className="px-3 py-2 rounded-xl border" onClick={()=>setShowMyRecurring(v=>!v)}>
-                    {showMyRecurring ? 'Skrýt' : 'Zobrazit'} moje opakované rezervace
-                  </button>
-                  {showMyRecurring && (
-                    <div className="mt-3 space-y-2">
-                      {myRecurringActive.length===0 ? <div className="text-sm text-gray-600">Žádné aktuální opakované rezervace.</div>
-                        : myRecurringActive.map(r=>{
-                          const next = nextOccurrenceISO(r);
-                          return (
-                          <div key={r.id} className="rounded-xl border px-3 py-2 cursor-pointer hover:shadow"
-                               title="Kliknutím zobrazíš den v kalendáři"
-                               onClick={()=>{ if(next) setSelectedDate(parseISO(next)); }}
-                               style={{backgroundColor: r.allowElsewhere ? 'rgba(191,219,254,0.5)' : 'rgba(253,230,138,0.5)'}}>
-                            <div className="text-sm flex items-start justify-between gap-2">
-                              <div>
-                                <span className="font-medium">{rooms.find(x=>x.id===r.roomId)?.name || '—'}</span>
-                                {' · '}{periodLabel(r.period)}
-                                {r.note ? ` · ${r.note}` : ''}
-                                <div className="text-xs text-gray-600">
-                                  {r.mode==='weeks' ? `od ${czFromISO(r.startISO)} (${r.weeks} týdnů)` : `od ${czFromISO(r.startISO)} do ${czFromISO(r.endISO)}`}
-                                  {next ? ` · nejbližší výskyt ${czFromISO(next)}` : ''}
-                                </div>
-                              </div>
-                              <button className="px-2 py-1 rounded-lg border text-xs bg-white shrink-0"
-                                onClick={(e)=>{e.stopPropagation(); if(window.confirm('Opravdu zrušit CELÉ opakování? Zruší se všechny týdny této série.')) guard(()=>stopRecurring(r.id), 'Opakování se nepodařilo zrušit');}}>Zrušit opak.</button>
-                            </div>
-                          </div>
-                        );})
-                      }
-                    </div>
-                  )}
-                </div>
-
-                <div>
-                  <button className="px-3 py-2 rounded-xl border" onClick={()=>setShowMySingles(v=>!v)}>
-                    {showMySingles ? 'Skrýt' : 'Zobrazit'} moje jednorázové rezervace
-                  </button>
-                  {showMySingles && (
-                    <div className="mt-3 space-y-2">
-                      {mySinglesActive.length===0 ? <div className="text-sm text-gray-600">Žádné aktuální jednorázové rezervace.</div>
-                        : mySinglesActive.map(s=>(
-                          <div key={s.id} className="rounded-xl border px-3 py-2 bg-white cursor-pointer hover:shadow"
-                               title="Kliknutím zobrazíš den v kalendáři"
-                               onClick={()=>setSelectedDate(parseISO(s.dateISO))}>
-                            <div className="text-sm flex items-start justify-between gap-2">
-                              <div>
-                                <span className="font-medium">{rooms.find(x=>x.id===s.roomId)?.name || '—'}</span>
-                                {' · '}{czFromISO(s.dateISO)}{' · '}{periodLabel(s.period)}
-                                {s.note ? ` · ${s.note}` : ''}
-                              </div>
-                              <button className="px-2 py-1 rounded-lg border text-xs shrink-0"
-                                onClick={(e)=>{e.stopPropagation(); if(window.confirm('Opravdu smazat tuto rezervaci?')) guard(()=>db.collection('reservations').doc(s.id).delete(), 'Rezervaci se nepodařilo smazat');}}>Smazat</button>
-                            </div>
-                          </div>
-                        ))
-                      }
-                    </div>
-                  )}
-                </div>
-            </section>
-
-            {/* Nastavení (jen admin) */}
-            {isAdmin && showSettings && (
-              <section className="bg-white/80 rounded-2xl p-4 grid grid-cols-1 lg:grid-cols-3 gap-4">
-                <div>
-                  <h2 className="text-lg font-semibold mb-2">Učitelé</h2>
-                  <div className="text-sm text-gray-600">Seznam učitelů vychází ze schválených uživatelů.</div>
-                  <div className="mt-2 flex flex-wrap gap-2">
-                    {teachers.map(t=>(
-                      <span key={t.id} className="inline-flex items-center gap-2 px-3 py-1 rounded-full border bg-white">{t.name}</span>
-                    ))}
-                  </div>
-                </div>
-
-                <div>
-                  <h2 className="text-lg font-semibold mb-2">Učebny / Pomůcky</h2>
-                  <div className="flex gap-2 mb-3">
-                    <button className="px-3 py-2 rounded-xl bg-black text-white" onClick={()=>setCreatingRoom(true)}>Přidat</button>
-                  </div>
-                  <div className="flex flex-col gap-2">
-                    {rooms.map(r=>(
-                      <div key={r.id}
-                           className="flex items-center justify-between rounded-xl border bg-white/70 px-3 py-2 cursor-pointer select-none"
-                           onClick={()=>setEditingRoom(r)}>
-                        <div>
-                          <div className="font-medium">{r.name}</div>
-                          <div className="mt-0.5 flex gap-2 items-center text-xs text-gray-700">
-                            <span className="px-1.5 py-0.5 rounded bg-gray-100 border">{r.code}</span>
-                            <span className="px-1.5 py-0.5 rounded bg-gray-100 border">{r.floor}</span>
-                            <span className="px-1.5 py-0.5 rounded bg-gray-100 border">{r.type==='equipment'?`pomůcka${r.max?` • max ${r.max}`:''}`:'učebna'}</span>
-                            <span className="px-1.5 py-0.5 rounded bg-gray-100 border">{(r.usage||'hours')==='hours'?'hodiny':(r.usage==='breaks'?'přestávky':'obojí')}</span>
-                          </div>
-                        </div>
-                        <button className="text-red-600 px-2 py-1 rounded-full hover:bg-red-50" title="Odebrat" onClick={(e)=>{e.stopPropagation(); if(window.confirm(`Opravdu odebrat „${r.name}“?`)) guard(()=>removeRoom(r.id), 'Místnost se nepodařilo odebrat');}}>✕</button>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-
-                <div>
-                  <h2 className="text-lg font-semibold mb-2">Uživatelé</h2>
-                  <div className="text-xs text-gray-600 mb-2">Schvalování a role. Níže uvidíš i e-maily z předschváleného seznamu (allowlist).</div>
-                  <div className="space-y-2 mb-4">
-                    {allUsers.map(u=>(
-                      <div key={u.id} className="flex items-center justify-between rounded-xl border bg-white px-3 py-2">
-                        <div className="text-sm">
-                          <div className="font-medium">{u.displayName || u.email}</div>
-                          <div className="text-xs text-gray-600">{u.email}</div>
-                        </div>
-                        <div className="flex items-center gap-2 text-sm">
-                          <label className="inline-flex items-center gap-1">
-                            <input type="checkbox" checked={!!u.approved} onChange={(e)=>guard(()=>db.collection('users').doc(u.id).set({approved:e.target.checked},{merge:true}), 'Změnu se nepodařilo uložit')}/>
-                            schválen
-                          </label>
-                          <label className="inline-flex items-center gap-1">
-                            <input type="checkbox" checked={!!u.isAdmin} onChange={(e)=>guard(()=>db.collection('users').doc(u.id).set({isAdmin:e.target.checked},{merge:true}), 'Změnu se nepodařilo uložit')}/>
-                            admin
-                          </label>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-
-                  {/* Allowlist bez účtu */}
-                  <div className="space-y-2">
-                    {allowlist
-                      .filter(a => !allUsers.some(u => (u.email||'').toLowerCase() === a.id.toLowerCase()))
-                      .map(a=>(
-                        <div key={a.id} className="flex items-center justify-between rounded-xl border px-3 py-2" style={{backgroundColor:'rgba(254,226,226,0.6)'}}>
-                          <div className="text-sm">
-                            <div className="font-medium">{a.id}</div>
-                            <div className="text-xs text-red-700">čeká na první přihlášení (předschválen)</div>
-                          </div>
-                          <button className="px-3 py-1 rounded-xl border" onClick={()=>guard(()=>db.collection('allowlist').doc(a.id).delete(), 'E-mail se nepodařilo odebrat')}>Odebrat</button>
-                        </div>
-                      ))
-                    }
-                  </div>
-
-                  <div className="mt-4">
-                    <h3 className="font-medium mb-2">Předschválit e-mail</h3>
-                    <AllowlistForm db={db} onError={(m)=>showToast(m)}/>
-                  </div>
-                </div>
-
-                {migrationDone === false && (
-                  <div className="lg:col-span-3 border-t pt-3">
-                    <h3 className="font-medium mb-1">Údržba dat</h3>
-                    <p className="text-xs text-gray-600 mb-2">
-                      Starší verze aplikace ukládala datumy o den menší (chyba časového pásma).
-                      Tento nástroj jednorázově posune všechny uložené rezervace o +1 den. Spusť ho
-                      právě jednou, hned po nasazení opravené verze.
-                    </p>
-                    <button className="px-3 py-2 rounded-xl border bg-white"
-                      onClick={()=>{ if(window.confirm('Opravdu posunout všechna uložená data o +1 den? Akce je jednorázová a nevratná.')) guard(()=>runDateShiftMigration(), 'Migraci se nepodařilo dokončit'); }}>
-                      Opravit posunutá data (+1 den)
-                    </button>
-                  </div>
-                )}
-              </section>
             )}
 
-            {/* dialogy */}
+            <main className="content">
+              {view==='rozvrh' && (
+                <>
+                  <WeekStrip days={workweek} selectedDate={selectedDate} summaryFor={summaryFor} onPick={setSelectedDate}/>
+                  <div className="panel">
+                    <div className="panel-head">
+                      <div>
+                        <h2>{capitalize(fullDateCz(selectedDate))}</h2>
+                        <div className="ph-sub">{viewMode==='hours'?'Vyučovací hodiny':'Přestávky'} · {visibleRooms.length} položek</div>
+                      </div>
+                      <div className="spacer"></div>
+                      <div className="legend hide-mobile">
+                        <span className="lg"><span className="sw free"></span> Volno</span>
+                        <span className="lg"><span className="sw single"></span> Rezervace</span>
+                        <span className="lg"><span className="sw rec"></span> Opakovaně</span>
+                      </div>
+                    </div>
+                    <div className="hide-mobile"><GridTable rooms={visibleRooms} periods={visiblePeriods} planFor={planFor} tName={tName} onOpen={openCell}/></div>
+                    <MobileSchedule rooms={visibleRooms} periods={visiblePeriods} planFor={planFor} tName={tName} onOpen={openCell}/>
+                  </div>
+                </>
+              )}
+
+              {view==='moje' && (
+                <div style={{display:'flex',flexDirection:'column',gap:'22px',maxWidth:'760px'}}>
+                  <section className="panel">
+                    <div className="panel-head"><h2>Opakované rezervace</h2><div className="spacer"></div><span className="ph-sub">{myRecurringActive.length} aktivních</span></div>
+                    <div style={{padding:'8px'}}>
+                      {myRecurringActive.length===0 ? <div className="dc-empty" style={{padding:'16px'}}>Žádné aktuální opakované rezervace.</div>
+                        : myRecurringActive.map(r=>{
+                          const next = nextOccurrenceISO(r);
+                          const room = rooms.find(x=>x.id===r.roomId);
+                          return (
+                            <div key={r.id} className="mylist-row" style={{cursor:next?'pointer':'default'}}
+                                 title="Kliknutím zobrazíš den v kalendáři"
+                                 onClick={()=>{ if(next) setSelectedDate(parseISO(next)); }}>
+                              <span className={`room-ico ${room?.type==='equipment'?'equip':''}`}>{roomIcon(room)}</span>
+                              <div style={{minWidth:0}}>
+                                <div className="lr-t">{room?.name || '—'} · {periodLabel(r.period)}</div>
+                                <div className="ph-sub">{r.mode==='weeks'?`od ${czFromISO(r.startISO)} (${r.weeks} týdnů)`:`od ${czFromISO(r.startISO)} do ${czFromISO(r.endISO)}`}{r.note?` · ${r.note}`:''}{next?` · nejbližší ${czFromISO(next)}`:''}</div>
+                              </div>
+                              <span className={`cell-tag ${r.mode==='until'?'tag-year':'tag-weeks'}`} style={{marginLeft:'auto'}}>{r.mode==='until'?'Celý rok':`${r.weeks} týdnů`}{r.allowElsewhere?' · jinde':''}</span>
+                              <button className="btn icon ghost danger" title="Zrušit opakování"
+                                onClick={(e)=>{e.stopPropagation(); if(window.confirm('Opravdu zrušit CELÉ opakování? Zruší se všechny týdny této série.')) guard(()=>stopRecurring(r.id), 'Opakování se nepodařilo zrušit');}}><IconTrash size={15}/></button>
+                            </div>
+                          );
+                        })}
+                    </div>
+                  </section>
+
+                  <section className="panel">
+                    <div className="panel-head"><h2>Jednorázové rezervace</h2><div className="spacer"></div><span className="ph-sub">{mySinglesActive.length}</span></div>
+                    <div style={{padding:'8px'}}>
+                      {mySinglesActive.length===0 ? <div className="dc-empty" style={{padding:'16px'}}>Žádné aktuální jednorázové rezervace.</div>
+                        : mySinglesActive.map(s=>{
+                          const room = rooms.find(x=>x.id===s.roomId);
+                          return (
+                            <div key={s.id} className="mylist-row" style={{cursor:'pointer'}}
+                                 title="Kliknutím zobrazíš den v kalendáři"
+                                 onClick={()=>setSelectedDate(parseISO(s.dateISO))}>
+                              <span className={`room-ico ${room?.type==='equipment'?'equip':''}`}>{roomIcon(room)}</span>
+                              <div style={{minWidth:0}}>
+                                <div className="lr-t">{room?.name || '—'} · {periodLabel(s.period)}</div>
+                                <div className="ph-sub">{fullDateCz(parseISO(s.dateISO))}{s.note?` · ${s.note}`:''}</div>
+                              </div>
+                              <span className="cell-tag" style={{marginLeft:'auto',background:'var(--brand-tint)',color:'var(--brand-strong)',borderColor:'var(--single-border)'}}>Jednorázově</span>
+                              <button className="btn icon ghost danger" title="Smazat"
+                                onClick={(e)=>{e.stopPropagation(); if(window.confirm('Opravdu smazat tuto rezervaci?')) guard(()=>db.collection('reservations').doc(s.id).delete(), 'Rezervaci se nepodařilo smazat');}}><IconTrash size={15}/></button>
+                            </div>
+                          );
+                        })}
+                    </div>
+                  </section>
+                </div>
+              )}
+
+              {view==='nastaveni' && isAdmin && (
+                <div className="settings-grid">
+                  <section className="panel">
+                    <div className="panel-head"><h2>Učebny a pomůcky</h2><div className="spacer"></div><button className="btn primary sm" onClick={()=>setCreatingRoom(true)}><IconPlus size={15}/> Přidat</button></div>
+                    <RoomsManager rooms={rooms} onReorder={reorderRooms} onEdit={setEditingRoom}
+                      onDelete={(r)=>{ if(window.confirm(`Opravdu odebrat „${r.name}“?`)) guard(()=>removeRoom(r.id), 'Místnost se nepodařilo odebrat'); }}/>
+                  </section>
+
+                  <section className="panel">
+                    <div className="panel-head"><h2>Uživatelé</h2><div className="spacer"></div><span className="ph-sub">{allUsers.filter(u=>u.approved).length} schválených</span></div>
+                    <div style={{padding:'8px'}}>
+                      {allUsers.map((u,i)=>(
+                        <div key={u.id} className="user-row" style={{borderTop:i?'1px solid var(--border)':'none'}}>
+                          <span className="avatar" style={{width:'32px',height:'32px',fontSize:'12px',background:u.isAdmin?'var(--gold-strong)':'var(--brand-deep)'}}>{initialsOf(u.displayName||u.email)}</span>
+                          <div style={{minWidth:0,flex:1}}>
+                            <div className="lr-t urname">
+                              <span className="urn-name">{u.displayName||u.email}</span>
+                              {u.isAdmin && <span className="role-pill admin"><IconShield size={10}/> admin</span>}
+                              {!u.approved && <span className="role-pill pending">čeká na schválení</span>}
+                            </div>
+                            <div className="ph-sub">{u.email}</div>
+                          </div>
+                          {u.approved ? (
+                            <div className="user-toggles">
+                              <label className="mini-check"><input type="checkbox" checked={!!u.isAdmin} onChange={(e)=>guard(()=>db.collection('users').doc(u.id).set({isAdmin:e.target.checked},{merge:true}), 'Změnu se nepodařilo uložit')}/> admin</label>
+                              <button className="btn icon ghost danger" title="Zrušit schválení" onClick={()=>guard(()=>db.collection('users').doc(u.id).set({approved:false},{merge:true}), 'Změnu se nepodařilo uložit')}><IconBan size={15}/></button>
+                            </div>
+                          ) : (
+                            <button className="btn primary sm" onClick={()=>guard(()=>db.collection('users').doc(u.id).set({approved:true},{merge:true}), 'Změnu se nepodařilo uložit')}><IconUserCheck size={15}/> Schválit</button>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                  </section>
+
+                  <section className="panel" style={{alignSelf:'start'}}>
+                    <div className="panel-head"><h2>Předschválené e-maily</h2><div className="spacer"></div><span className="ph-sub">allowlist</span></div>
+                    <div style={{padding:'14px'}}>
+                      <div className="helptext" style={{marginBottom:'10px'}}>Tyto e-maily budou schváleny hned po prvním přihlášení.</div>
+                      <AllowlistForm db={db} onError={(m)=>showToast(m)}/>
+                      <div style={{marginTop:'12px',display:'flex',flexDirection:'column',gap:'6px'}}>
+                        {allowlist.filter(a => !allUsers.some(u => (u.email||'').toLowerCase() === a.id.toLowerCase())).map(a=>(
+                          <div key={a.id} className="allow-row"><IconMail size={15}/><span style={{flex:1}}>{a.id}</span><button className="btn icon ghost danger" title="Odebrat" onClick={()=>guard(()=>db.collection('allowlist').doc(a.id).delete(), 'E-mail se nepodařilo odebrat')}><IconClose size={14}/></button></div>
+                        ))}
+                      </div>
+                    </div>
+                  </section>
+
+                  {migrationDone === false && (
+                    <section className="panel" style={{alignSelf:'start'}}>
+                      <div className="panel-head"><h2>Údržba dat</h2></div>
+                      <div style={{padding:'16px'}}>
+                        <div className="maint-card">
+                          <span className="room-ico equip"><IconDatabase size={17}/></span>
+                          <div style={{flex:1,minWidth:0}}>
+                            <div style={{fontWeight:600,fontSize:'14px'}}>Opravit posunutá data (+1 den)</div>
+                            <div className="ph-sub" style={{whiteSpace:'normal',fontSize:'12.5px',color:'var(--text-faint)'}}>Jednorázová migrace po opravě časového pásma. Spusť ji právě jednou, hned po nasazení opravené verze.</div>
+                          </div>
+                        </div>
+                        <button className="btn" style={{marginTop:'12px'}}
+                          onClick={()=>{ if(window.confirm('Opravdu posunout všechna uložená data o +1 den? Akce je jednorázová a nevratná.')) guard(()=>runDateShiftMigration(), 'Migraci se nepodařilo dokončit'); }}>
+                          <IconDatabase size={15}/> Spustit opravu
+                        </button>
+                      </div>
+                    </section>
+                  )}
+                </div>
+              )}
+            </main>
+
+            <nav className="mobile-bar">
+              {navDefs.map(it=>(
+                <button key={it.id} className={`mb ${view===it.id?'active':''}`} onClick={()=>setView(it.id)}>{it.icon}<span>{it.label.split(' ')[0]}</span></button>
+              ))}
+            </nav>
+
+            {toast && <Toast toast={toast}/>}
+
+            <DateModal open={dateModal} valueISO={toISO(selectedDate)} onClose={()=>setDateModal(false)} onChange={(v)=>v&&setSelectedDate(toWeekday(parseISO(v)))}/>
+
             <ReservationDialog
               open={!!dialog}
               onClose={()=>setDialog(null)}
@@ -1182,20 +1669,14 @@
               isAdmin={isAdmin}
               currentUserId={authUser?.uid}
               onSave={(payload)=> guard(()=>upsertReservation(dialog.dateIso, dialog.roomId, dialog.period, payload, dialog?.editingRecurringId||null, dialog?.existingSingleId||null), 'Rezervaci se nepodařilo uložit')}
+              onDelete={()=> guard(async()=>{ if(dialog.editingRecurringId) await stopRecurring(dialog.editingRecurringId); else await clearReservation(dialog.dateIso, dialog.roomId, dialog.period); }, 'Rezervaci se nepodařilo smazat')}
+              onSkip={()=> guard(()=>skipOccurrence(dialog.editingRecurringId, dialog.dateIso), 'Výskyt se nepodařilo zrušit')}
             />
-            <RoomDialog
-              open={!!editingRoom}
-              initial={editingRoom}
-              onClose={()=>setEditingRoom(null)}
-              onSave={async (patch)=>{ await guard(()=>updateRoom(editingRoom.id, patch), 'Místnost se nepodařilo uložit'); setEditingRoom(null); }}
-            />
-            <RoomDialog
-              open={!!creatingRoom}
-              initial={null}
-              onClose={()=>setCreatingRoom(false)}
-              onSave={async (patch)=>{ await guard(()=>addRoom(patch), 'Místnost se nepodařilo přidat'); setCreatingRoom(false); }}
-            />
-            <DetailModal detail={detail} onClose={()=>setDetail(null)} rooms={rooms} teachers={teachers}/>
+            <RoomDialog open={!!editingRoom} initial={editingRoom} onClose={()=>setEditingRoom(null)}
+              onSave={async (patch)=>{ await guard(()=>updateRoom(editingRoom.id, patch), 'Místnost se nepodařilo uložit'); setEditingRoom(null); }}/>
+            <RoomDialog open={!!creatingRoom} initial={null} onClose={()=>setCreatingRoom(false)}
+              onSave={async (patch)=>{ await guard(()=>addRoom(patch), 'Místnost se nepodařilo přidat'); setCreatingRoom(false); }}/>
+            <DetailModal detail={detail} onClose={()=>setDetail(null)} rooms={rooms} tName={tName}/>
           </div>
         );
       }
@@ -1204,9 +1685,9 @@
         const [email,setEmail]=useState("");
         const [saving,setSaving]=useState(false);
         return (
-          <div className="flex gap-2">
-            <input className="border rounded-xl px-3 py-2 flex-1" placeholder="ucitel@skola.cz" value={email} onChange={e=>setEmail(e.target.value)}/>
-            <button className="px-3 py-2 rounded-xl bg-black text-white" disabled={saving || !email.includes('@')}
+          <div className="allow-add">
+            <input className="input" placeholder="jmeno@gymnaziumbma.cz" value={email} onChange={e=>setEmail(e.target.value)}/>
+            <button className="btn primary icon" title="Přidat e-mail" disabled={saving || !email.includes('@')}
               onClick={async ()=>{
                 const key = email.trim().toLowerCase();
                 if(!key) return;
@@ -1216,7 +1697,7 @@
                   setEmail("");
                 } catch(err){ console.error(err); onError && onError(`E-mail se nepodařilo předschválit (${err?.message || err})`); }
                 finally { setSaving(false); }
-              }}>Přidat</button>
+              }}><IconPlus size={16}/></button>
           </div>
         );
       }
