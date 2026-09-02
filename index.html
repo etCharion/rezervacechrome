@@ -410,6 +410,7 @@
       .tstat .ts-glyph { font-size: 14px; font-weight: 800; line-height: 1; flex-shrink: 0; }
       .tstat .ts-l { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
       .tstat .ts-dot { position: absolute; top: 4px; right: 5px; width: 6px; height: 6px; border-radius: 50%; background: currentColor; opacity: .5; }
+      .tstat .ts-count { position: absolute; top: 2px; right: 3px; min-width: 15px; height: 15px; padding: 0 4px; border-radius: 999px; background: #c0463d; color: #fff; font-size: 9.5px; font-weight: 700; display: grid; place-items: center; }
       .tstat.chip { width: auto; min-height: 28px; padding: 4px 10px; flex-shrink: 0; }
       .tstat.big { width: auto; min-height: 38px; padding: 8px 13px; font-size: 13.5px; }
       .tstat.big .ts-glyph { font-size: 17px; }
@@ -443,6 +444,18 @@
       .issue-row .ir-main { flex: 1; min-width: 0; border: none; background: transparent; text-align: left; font-family: inherit; padding: 0; }
       .issue-row .ir-actions { display: flex; align-items: center; gap: 7px; flex-shrink: 0; margin-left: auto; }
       .pill-new { background: #c0463d; color: #fff; font-size: 9.5px; font-weight: 700; letter-spacing: .04em; text-transform: uppercase; padding: 2px 6px; border-radius: 999px; }
+
+      /* historie hlášení v dialogu */
+      .report-list { display: flex; flex-direction: column; gap: 8px; max-height: 280px; overflow-y: auto; padding-right: 2px; }
+      .report-item { display: flex; align-items: flex-start; gap: 8px; border: 1px solid var(--border); border-left: 3px solid #c0463d; border-radius: var(--r-md); background: var(--surface-2); padding: 10px 12px; }
+      .report-item.done { border-left-color: var(--free); background: var(--surface); opacity: .75; }
+      .report-item .rp-body { min-width: 0; flex: 1; }
+      .report-item .rp-text { font-size: 13.5px; color: var(--text); white-space: pre-wrap; }
+      .report-item.done .rp-text { text-decoration: line-through; text-decoration-color: var(--text-faint); }
+      .report-item .rp-meta { font-size: 11.5px; color: var(--text-faint); margin-top: 5px; }
+      .report-item .rp-done { color: #1f7a55; font-weight: 600; }
+      .link-btn { border: none; background: transparent; padding: 0; font-family: inherit; font-size: 12px; font-weight: 600; color: var(--brand); text-decoration: underline; }
+      .link-btn:hover { color: var(--brand-strong); }
 
       /* popis závady v dialogu */
       .note-card { border: 1px solid var(--border); border-radius: var(--r-md); padding: 11px 13px; background: var(--surface-2); border-left: 3px solid var(--border-strong); }
@@ -500,8 +513,10 @@
       const czFromISO = s => s ? parseISO(s).toLocaleDateString('cs-CZ', { day:'numeric', month:'numeric', year:'numeric' }) : '';
       // Firestore Timestamp / Date -> čitelné české datum a čas
       const czDateTime = (ts)=>{
-        const d = ts && typeof ts.toDate === 'function' ? ts.toDate() : (ts instanceof Date ? ts : null);
-        return d ? d.toLocaleString('cs-CZ', { day:'numeric', month:'numeric', year:'numeric', hour:'2-digit', minute:'2-digit' }) : '';
+        const d = ts && typeof ts.toDate === 'function' ? ts.toDate()
+                : (ts instanceof Date ? ts
+                : (typeof ts === 'string' ? new Date(ts) : null));
+        return (d && !isNaN(d)) ? d.toLocaleString('cs-CZ', { day:'numeric', month:'numeric', year:'numeric', hour:'2-digit', minute:'2-digit' }) : '';
       };
       const addDays = (d,n)=>{ const x=new Date(d); x.setDate(x.getDate()+n); return x; };
       const addWeeks = (d,n)=> addDays(d, n*7);
@@ -587,6 +602,26 @@
       const TECH_UNKNOWN = { id:'?', label:'Neznámý stav', glyph:'?', color:'gray', counts:false };
       const techKey = (roomId,itemId)=> `${roomId}__${itemId}`;   // deterministické ID dokumentu
       const plural = (n, one, few, many)=> n===1 ? one : (n>=2 && n<=4 ? few : many);
+
+      // ---------- hlášení závad ----------
+      // K jedné buňce (třída × vybavení) může přibývat libovolně mnoho hlášení
+      // od různých učitelů. Jsou v poli `reports` uvnitř dokumentu `techStatus`;
+      // nové se přidává přes arrayUnion, takže se dvě souběžná hlášení nepřepíšou.
+      // Položka: { id, text, by, byName, at (ISO string), done, doneBy, doneByName, doneAt }
+      const techReports = (st)=>{
+        if(!st) return [];
+        if(Array.isArray(st.reports)) return st.reports;
+        // záznam z verze před zavedením historie – popis ukážeme jako jedno hlášení
+        if(st.note && st.handled === false){
+          return [{ id:'legacy', text:st.note, byName: st.reportedByName || st.updatedByName || '',
+                    at: null, done:false }];
+        }
+        return [];
+      };
+      const openReports = (st)=> techReports(st).filter(r=> !r.done);
+      // nejnovější nahoře; hlášení bez času (starý záznam) na konec
+      const sortedReports = (st)=> [...techReports(st)].sort((a,b)=> String(b.at||'').localeCompare(String(a.at||'')));
+      const newReportId = ()=> `${Date.now()}-${Math.random().toString(36).slice(2,8)}`;
 
       // ---------- ikony (inline SVG, Lucide-styl) ----------
       const Ico = ({ d, paths, size=18, fill, sw=1.9, ...p }) => (
@@ -1036,37 +1071,60 @@
       // je oddělený od učeben a pomůcek v rozvrhu — spravuje ho admin v Nastavení.
 
       // Barevný štítek stavu (ikona + název)
-      function StatusChip({ type, extra='', note }){
+      function StatusChip({ type, extra='', note, count=0 }){
+        const title = [type.label, count ? `${count} ${plural(count,'otevřené hlášení','otevřená hlášení','otevřených hlášení')}` : '', note]
+          .filter(Boolean).join(' — ');
         return (
-          <span className={`tstat st-${type.color} ${extra}`} title={note ? `${type.label} — ${note}` : type.label}>
+          <span className={`tstat st-${type.color} ${extra}`} title={title}>
             <span className="ts-glyph">{type.glyph}</span>
             <span className="ts-l">{type.label}</span>
-            {note ? <span className="ts-dot"></span> : null}
+            {count>0 ? <span className="ts-count">{count}</span> : (note ? <span className="ts-dot"></span> : null)}
           </span>
         );
       }
 
       // Dialog nad jednou buňkou tabulky.
-      // Učitel: přečte popis a může nahlásit problém.
-      // Admin: navíc mění stav ručně a hlášení vyřizuje.
-      function TechCellDialog({ open, room, item, status, types, typeOf, isAdmin, onClose, onReport, onSetStatus, onResolve }){
+      // Učitel: přečte historii hlášení a přidá další.
+      // Admin: navíc mění stav ručně a hlášení vyřizuje (jedno po druhém, nebo všechna).
+      function TechCellDialog({ open, room, item, status, types, typeOf, isAdmin, onClose, onReport, onSetStatus, onResolveAll, onResolveOne }){
         const [mode,setMode]=useState('view');     // 'view' | 'report' | 'edit'
         const [reportText,setReportText]=useState("");
         const [statusId,setStatusId]=useState(TECH_OK_ID);
         const [note,setNote]=useState("");
+        const [showDone,setShowDone]=useState(false);
 
         useEffect(()=>{
           if(!open) return;
           setMode('view');
           setReportText("");
+          setShowDone(false);
           setStatusId(status?.statusId || TECH_OK_ID);
           setNote(status?.note || "");
         },[open, status]);
 
         if(!open) return null;
         const type = typeOf(status?.statusId);
-        const unhandled = !!status && status.handled === false;
-        const isProblem = !!type.counts;
+        const all = sortedReports(status);
+        const open_ = all.filter(r=>!r.done);
+        const done_ = all.filter(r=>r.done);
+        const visible = showDone ? all : open_;
+
+        const reportRow = (r)=>(
+          <div key={r.id} className={`report-item ${r.done?'done':''}`}>
+            <div className="rp-body">
+              <div className="rp-text">{r.text}</div>
+              <div className="rp-meta">
+                {[r.byName ? stripTitle(r.byName) : 'Neznámý', czDateTime(r.at)].filter(Boolean).join(' · ')}
+                {r.done && (
+                  <> · <span className="rp-done">vyřídil {r.doneByName ? stripTitle(r.doneByName) : 'admin'}{czDateTime(r.doneAt) ? ` ${czDateTime(r.doneAt)}` : ''}</span></>
+                )}
+              </div>
+            </div>
+            {isAdmin && !r.done && r.id !== 'legacy' && (
+              <button className="btn icon ghost" title="Označit toto hlášení za vyřízené" onClick={()=>onResolveOne(r.id)}><IconCheck size={15}/></button>
+            )}
+          </div>
+        );
 
         return (
           <div className="overlay" onClick={onClose}>
@@ -1084,23 +1142,33 @@
                   <label>Současný stav</label>
                   <div style={{display:'flex',alignItems:'center',gap:'9px',flexWrap:'wrap'}}>
                     <StatusChip type={type} extra="big"/>
-                    {unhandled && <span className="pill-new">nevyřízeno</span>}
+                    {open_.length>0 && <span className="pill-new">{open_.length} {plural(open_.length,'otevřené hlášení','otevřená hlášení','otevřených hlášení')}</span>}
                   </div>
                 </div>
 
                 {status?.note ? (
-                  <div className={`note-card ${isProblem?'has-problem':''}`}>
+                  <div className="note-card">
                     <div className="nc-text">{status.note}</div>
                     <div className="nc-meta">
-                      {[
-                        status.reportedByName ? `Nahlásil: ${stripTitle(status.reportedByName)}`
-                          : (status.updatedByName ? `Zapsal: ${stripTitle(status.updatedByName)}` : ''),
-                        czDateTime(status.updatedAt),
-                      ].filter(Boolean).join(' · ')}
+                      {['Komentář správce', status.updatedByName ? stripTitle(status.updatedByName) : '', czDateTime(status.updatedAt)].filter(Boolean).join(' · ')}
                     </div>
                   </div>
-                ) : (
-                  mode==='view' && <div className="helptext">K této položce zatím není žádný popis.</div>
+                ) : null}
+
+                {mode==='view' && (
+                  <div className="field">
+                    <label style={{display:'flex',alignItems:'center',gap:'8px'}}>
+                      Hlášení od učitelů
+                      {done_.length>0 && (
+                        <button type="button" className="link-btn" onClick={()=>setShowDone(v=>!v)}>
+                          {showDone ? 'skrýt vyřízená' : `zobrazit i vyřízená (${done_.length})`}
+                        </button>
+                      )}
+                    </label>
+                    {visible.length===0
+                      ? <div className="helptext">{all.length===0 ? 'Zatím nikdo nic nenahlásil.' : 'Všechna hlášení jsou vyřízená.'}</div>
+                      : <div className="report-list">{visible.map(reportRow)}</div>}
+                  </div>
                 )}
 
                 {mode==='report' && (
@@ -1109,7 +1177,11 @@
                     <textarea className="input" rows={4} style={{resize:'vertical'}} autoFocus
                       placeholder="Např. televize se nepřepne na HDMI 2, obraz zůstane černý."
                       value={reportText} onChange={e=>setReportText(e.target.value)} />
-                    <div className="helptext" style={{marginTop:'6px'}}>Stav se změní na „{(types.find(t=>t.id===TECH_REPORTED_ID)||{label:'Nahlášený problém'}).label}“ a admin dostane upozornění.</div>
+                    <div className="helptext" style={{marginTop:'6px'}}>
+                      {open_.length>0
+                        ? `Přidá se jako další hlášení k ${open_.length} už otevřeným — nic se nepřepíše.`
+                        : 'Hlášení se uloží k této položce a admin dostane upozornění.'}
+                    </div>
                   </div>
                 )}
 
@@ -1129,11 +1201,14 @@
                       </div>
                     </div>
                     <div className="field">
-                      <label>Popis / komentář</label>
+                      <label>Komentář správce</label>
                       <textarea className="input" rows={3} style={{resize:'vertical'}}
                         placeholder="Např. objednaná nová redukce, dorazí příští týden."
                         value={note} onChange={e=>setNote(e.target.value)} />
                     </div>
+                    {open_.length>0 && (
+                      <div className="banner"><IconInfo/> Uložením se {open_.length} {plural(open_.length,'otevřené hlášení označí','otevřená hlášení označí','otevřených hlášení označí')} za vyřízená — historie zůstane.</div>
+                    )}
                   </>
                 )}
               </div>
@@ -1142,8 +1217,8 @@
                 {mode==='view' && (
                   <>
                     <button className="btn" onClick={onClose}>Zavřít</button>
-                    {isAdmin && isProblem && (
-                      <button className="btn" onClick={onResolve}><IconCheck size={15}/> Vyřídit a nastavit „funkční“</button>
+                    {isAdmin && open_.length>0 && (
+                      <button className="btn" onClick={onResolveAll}><IconCheck size={15}/> Vyřídit vše</button>
                     )}
                     {isAdmin && <button className="btn" onClick={()=>setMode('edit')}><IconSettings size={15}/> Změnit stav</button>}
                     <button className="btn primary" onClick={()=>setMode('report')}><IconAlert size={15}/> Nahlásit problém</button>
@@ -1361,13 +1436,15 @@
                     {items.map(it=>{
                       const st = statusFor(room.id, it.id);
                       const type = typeOf(st?.statusId);
+                      const open = openReports(st).length;
+                      const title = [type.label, open ? `${open} ${plural(open,'otevřené hlášení','otevřená hlášení','otevřených hlášení')}` : '', st?.note]
+                        .filter(Boolean).join(' — ');
                       return (
                         <td key={it.id} className="slot">
-                          <button className={`tstat st-${type.color}`} onClick={()=>onOpen(room,it)}
-                            title={st?.note ? `${type.label} — ${st.note}` : type.label}>
+                          <button className={`tstat st-${type.color}`} onClick={()=>onOpen(room,it)} title={title}>
                             <span className="ts-glyph">{type.glyph}</span>
                             <span className="ts-l">{type.label}</span>
-                            {st?.note ? <span className="ts-dot"></span> : null}
+                            {open>0 ? <span className="ts-count">{open}</span> : (st?.note ? <span className="ts-dot"></span> : null)}
                           </button>
                         </td>
                       );
@@ -1399,7 +1476,7 @@
                     return (
                       <button key={it.id} className="tech-mrow" onClick={()=>onOpen(room,it)}>
                         <span className="tm-name">{it.name}</span>
-                        <StatusChip type={type} extra="chip" note={st?.note}/>
+                        <StatusChip type={type} extra="chip" note={st?.note} count={openReports(st).length}/>
                       </button>
                     );
                   })}
@@ -1734,47 +1811,77 @@
           return ()=>{ cancelled = true; };
         },[!!me?.isAdmin]);
 
-        // učitel i admin: hlášení problému → stav „nahlášený problém“, nevyřízeno
+        const techRef = (roomId,itemId)=> db.collection('techStatus').doc(techKey(roomId,itemId));
+        const whoAmI = ()=> ({
+          updatedBy: authUser?.uid || 'unknown',
+          updatedByName: me?.displayName || me?.email || '',
+          updatedAt: firebase.firestore.FieldValue.serverTimestamp(),
+        });
+
+        // Přidání hlášení. Používá arrayUnion, takže dvě souběžná hlášení
+        // od různých učitelů se navzájem nepřepíšou.
         async function reportTechProblem(roomId, itemId, text){
-          await db.collection('techStatus').doc(techKey(roomId,itemId)).set({
+          const current = statusFor(roomId, itemId);
+          // Už známý problém (např. „nefunkční“) se novým hlášením nepřepisuje —
+          // jen se k němu přidá další hlášení a buňka se vrátí mezi nevyřízené.
+          const keepStatus = current && typeOf(current.statusId).counts;
+          const report = {
+            id: newReportId(),
+            text,
+            by: authUser?.uid || 'unknown',
+            byName: me?.displayName || me?.email || '',
+            at: new Date().toISOString(),   // serverTimestamp nelze použít uvnitř pole
+            done: false,
+          };
+          await techRef(roomId,itemId).set({
             roomId, itemId,
-            statusId: TECH_REPORTED_ID,
-            note: text,
-            handled: false,
-            reportedBy: authUser?.uid || 'unknown',
-            reportedByName: me?.displayName || me?.email || '',
-            updatedBy: authUser?.uid || 'unknown',
-            updatedByName: me?.displayName || me?.email || '',
-            updatedAt: firebase.firestore.FieldValue.serverTimestamp(),
+            statusId: keepStatus ? current.statusId : TECH_REPORTED_ID,
+            reports: firebase.firestore.FieldValue.arrayUnion(report),
+            ...whoAmI(),
           }, {merge:true});
         }
 
-        // admin: ruční nastavení stavu (zároveň bere hlášení na vědomí)
+        // označí otevřená hlášení za vyřízená (volitelně jen jedno podle ID)
+        const closeReports = (st, onlyId)=> techReports(st).map(r=>
+          (r.done || (onlyId && r.id !== onlyId)) ? r : {
+            ...r, done:true,
+            doneBy: authUser?.uid || 'unknown',
+            doneByName: me?.displayName || me?.email || '',
+            doneAt: new Date().toISOString(),
+          });
+
+        // admin: ruční nastavení stavu; otevřená hlášení tím bere na vědomí
         async function applyTechStatus(roomId, itemId, payload){
-          await db.collection('techStatus').doc(techKey(roomId,itemId)).set({
+          const st = statusFor(roomId, itemId);
+          await techRef(roomId,itemId).set({
             roomId, itemId,
             statusId: payload.statusId,
             note: payload.note || '',
-            handled: true,
-            updatedBy: authUser?.uid || 'unknown',
-            updatedByName: me?.displayName || me?.email || '',
-            updatedAt: firebase.firestore.FieldValue.serverTimestamp(),
+            reports: closeReports(st),
+            ...whoAmI(),
           }, {merge:true});
         }
 
-        // admin: vyřídit problém a vrátit stav na „funkční“
+        // admin: vyřídit jedno konkrétní hlášení, stav nechat být
+        async function resolveOneReport(roomId, itemId, reportId){
+          const st = statusFor(roomId, itemId);
+          await techRef(roomId,itemId).set({
+            roomId, itemId,
+            reports: closeReports(st, reportId),
+            ...whoAmI(),
+          }, {merge:true});
+        }
+
+        // admin: vyřídit vše a vrátit stav na „funkční“
         async function resolveTechProblem(roomId, itemId){
+          const st = statusFor(roomId, itemId);
           const okId = techTypes.find(t=>t.id===TECH_OK_ID) ? TECH_OK_ID : (techTypes[0]?.id || TECH_OK_ID);
-          await db.collection('techStatus').doc(techKey(roomId,itemId)).set({
+          await techRef(roomId,itemId).set({
             roomId, itemId,
             statusId: okId,
             note: '',
-            handled: true,
-            resolvedBy: authUser?.uid || 'unknown',
-            resolvedByName: me?.displayName || me?.email || '',
-            updatedBy: authUser?.uid || 'unknown',
-            updatedByName: me?.displayName || me?.email || '',
-            updatedAt: firebase.firestore.FieldValue.serverTimestamp(),
+            reports: closeReports(st),
+            ...whoAmI(),
           }, {merge:true});
         }
 
@@ -1813,22 +1920,24 @@
         const reorderTechItems = (list)=> reorderTech('techItems', setTechItems, list);
         const reorderTechTypes = (list)=> reorderTech('techStatusTypes', setTechTypes, list);
 
-        // shrnutí: všechny buňky se „problémovým“ stavem; nevyřízená hlášení nahoře
+        // shrnutí: buňky s „problémovým“ stavem nebo s otevřeným hlášením;
+        // nevyřízená hlášení nahoře
         const techProblems = useMemo(()=>{
           const roomOrder = new Map(techRooms.map((r,i)=>[r.id,i]));
           const itemOrder = new Map(techItems.map((t,i)=>[t.id,i]));
           const typeOrder = new Map(techTypes.map((t,i)=>[t.id,i]));
           return Object.values(techStatus)
-            .filter(st=> roomOrder.has(st.roomId) && itemOrder.has(st.itemId) && !!typeOf(st.statusId).counts)
+            .filter(st=> roomOrder.has(st.roomId) && itemOrder.has(st.itemId)
+                         && (!!typeOf(st.statusId).counts || openReports(st).length > 0))
             .sort((a,b)=>
-              ((a.handled===false?0:1) - (b.handled===false?0:1))
+              ((openReports(a).length?0:1) - (openReports(b).length?0:1))
               || ((typeOrder.get(a.statusId) ?? 99) - (typeOrder.get(b.statusId) ?? 99))
               || (roomOrder.get(a.roomId) - roomOrder.get(b.roomId))
               || (itemOrder.get(a.itemId) - itemOrder.get(b.itemId)));
         },[techStatus, techRooms, techItems, techTypes]);
 
-        // počet nových, dosud nevyřízených hlášení (odznak u zvonečku)
-        const techUnhandled = useMemo(()=> techProblems.filter(st=> st.handled===false).length, [techProblems]);
+        // kolik buněk má aspoň jedno nevyřízené hlášení (odznak u zvonečku)
+        const techUnhandled = useMemo(()=> techProblems.filter(st=> openReports(st).length > 0).length, [techProblems]);
 
         // ---------- kontrola kolizí ----------        // ---------- kontrola kolizí ----------
         function seriesDates(startISO, endISO){
@@ -2264,7 +2373,7 @@
                     <div className="panel-head">
                       <div>
                         <h2>Stav techniky ve třídách</h2>
-                        <div className="ph-sub">{techRooms.length} {plural(techRooms.length,'třída','třídy','tříd')} · kliknutím na stav nahlásíš problém</div>
+                        <div className="ph-sub">{techRooms.length} {plural(techRooms.length,'třída','třídy','tříd')} · kliknutím na stav si přečteš hlášení nebo přidáš vlastní</div>
                       </div>
                       <div className="spacer"></div>
                       <div className="legend hide-mobile">
@@ -2297,7 +2406,7 @@
                     <div className="panel-head">
                       <div>
                         <h2>Problémy a nevyřízené věci</h2>
-                        <div className="ph-sub">{techUnhandled>0 ? `${techUnhandled} ${plural(techUnhandled,'nové hlášení čeká','nová hlášení čekají','nových hlášení čeká')} na vyřízení` : 'Žádná nevyřízená hlášení'}</div>
+                        <div className="ph-sub">{techUnhandled>0 ? `${techUnhandled} ${plural(techUnhandled,'položka čeká','položky čekají','položek čeká')} na vyřízení hlášení` : 'Žádná nevyřízená hlášení'}</div>
                       </div>
                       <div className="spacer"></div>
                       <span className="ph-sub">{techProblems.length} {plural(techProblems.length,'položka','položky','položek')}</span>
@@ -2309,25 +2418,27 @@
                         const room = techRooms.find(r=>r.id===st.roomId);
                         const item = techItems.find(i=>i.id===st.itemId);
                         const type = typeOf(st.statusId);
+                        const open = openReports(st);
+                        const last = sortedReports(st).find(r=>!r.done);
                         return (
                           <div key={st.id} className="issue-row">
                             <span className={`ir-ico st-${type.color}`}>{type.glyph}</span>
-                            <button className="ir-main" title="Kliknutím otevřeš detail" onClick={()=>setTechDialog({room, item})}>
+                            <button className="ir-main" title="Kliknutím otevřeš detail a historii hlášení" onClick={()=>setTechDialog({room, item})}>
                               <div className="lr-t" style={{display:'flex',alignItems:'center',gap:'7px',whiteSpace:'normal'}}>
                                 {room?.name || '—'} · {item?.name || '—'}
-                                {st.handled===false && <span className="pill-new">nové</span>}
+                                {open.length>0 && <span className="pill-new">{open.length} {plural(open.length,'hlášení','hlášení','hlášení')}</span>}
                               </div>
                               <div className="ph-sub" style={{whiteSpace:'normal'}}>
-                                {[st.note || type.label,
-                                  st.reportedByName ? stripTitle(st.reportedByName) : '',
-                                  czDateTime(st.updatedAt)].filter(Boolean).join(' · ')}
+                                {[last?.text || st.note || type.label,
+                                  last?.byName ? stripTitle(last.byName) : '',
+                                  czDateTime(last?.at || st.updatedAt)].filter(Boolean).join(' · ')}
                               </div>
                             </button>
                             <div className="ir-actions">
                               <StatusChip type={type} extra="chip"/>
                               {isAdmin && (
-                                <button className="btn sm" title="Vyřídit a nastavit stav na „funkční“"
-                                  onClick={()=>{ if(window.confirm(`Označit „${item?.name}“ v ${room?.name} jako vyřízené a vrátit stav na funkční?`)) guard(()=>resolveTechProblem(st.roomId, st.itemId), 'Problém se nepodařilo vyřídit'); }}>
+                                <button className="btn sm" title="Vyřídit všechna hlášení a nastavit stav na „funkční“"
+                                  onClick={()=>{ if(window.confirm(`Označit „${item?.name}“ v ${room?.name} jako vyřízené${open.length>1?` (${open.length} hlášení)`:''} a vrátit stav na funkční?`)) guard(()=>resolveTechProblem(st.roomId, st.itemId), 'Problém se nepodařilo vyřídit'); }}>
                                   <IconCheck size={15}/> Vyřídit
                                 </button>
                               )}
@@ -2513,17 +2624,18 @@
               onReport={async (text)=>{
                 await guard(()=>reportTechProblem(techDialog.room.id, techDialog.item.id, text), 'Hlášení se nepodařilo odeslat');
                 setTechDialog(null);
-                showToast('Problém nahlášen, administrátor se o něm dozví.', 'ok');
+                showToast('Hlášení uloženo, administrátor se o něm dozví.', 'ok');
               }}
               onSetStatus={async (payload)=>{
                 await guard(()=>applyTechStatus(techDialog.room.id, techDialog.item.id, payload), 'Stav se nepodařilo uložit');
                 setTechDialog(null);
               }}
-              onResolve={async ()=>{
-                await guard(()=>resolveTechProblem(techDialog.room.id, techDialog.item.id), 'Problém se nepodařilo vyřídit');
+              onResolveAll={async ()=>{
+                await guard(()=>resolveTechProblem(techDialog.room.id, techDialog.item.id), 'Hlášení se nepodařilo vyřídit');
                 setTechDialog(null);
                 showToast('Vyřízeno — stav vrácen na „funkční“.', 'ok');
-              }}/>
+              }}
+              onResolveOne={(reportId)=> guard(()=>resolveOneReport(techDialog.room.id, techDialog.item.id, reportId), 'Hlášení se nepodařilo vyřídit')}/>
             <TechRoomDialog open={!!editingTechRoom} initial={editingTechRoom} onClose={()=>setEditingTechRoom(null)}
               onSave={async (p)=>{ await guard(()=>updateTechRoom(editingTechRoom.id, p), 'Třídu se nepodařilo uložit'); setEditingTechRoom(null); }}/>
             <TechRoomDialog open={!!creatingTechRoom} initial={null} onClose={()=>setCreatingTechRoom(false)}

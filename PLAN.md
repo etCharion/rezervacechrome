@@ -187,25 +187,39 @@ závady; třídy i vybavení přidává admin; ikony stavů jsou konfigurovateln
 - Nové kolekce `techRooms`, `techItems`, `techStatusTypes`, `techStatus`
   (viz datový model). Seznam tříd je **záměrně oddělený** od `rooms`.
 - Tabulka třídy × vybavení; na mobilu karty po třídách. Buňka = barevný štítek
-  s ikonou; tečka v rohu znamená, že je k buňce popis.
-- **Hlášení:** klik na stav → *Nahlásit problém* → text → stav `reported`
-  (růžový otazník), `handled:false`. Po dalším kliknutí je popis vidět.
-- **Shrnutí pod tabulkou:** všechny buňky se stavem `counts:true`, nevyřízená
-  hlášení nahoře se štítkem *nové*; admin má u řádku tlačítko *Vyřídit*.
-- **Admin:** zvoneček v horní liště s počtem nevyřízených hlášení; v dialogu
-  buňky *Změnit stav* (libovolný stav + komentář) a *Vyřídit* (zpět na
-  „funkční“). Ruční zásah adminem vždy nastaví `handled:true`.
+  s ikonou; číslo v rohu = počet otevřených hlášení, tečka = komentář správce.
+- **Hlášení:** klik na stav → *Nahlásit problém* → text → přidá se do
+  `reports[]` (arrayUnion) a stav se přepne na `reported` (růžový otazník).
+  K jedné buňce může přibývat libovolně mnoho hlášení od různých učitelů;
+  nic se nepřepisuje. V dialogu je seznam od nejnovějšího, vyřízená se skryjí
+  pod odkaz *zobrazit i vyřízená*.
+- **Shrnutí pod tabulkou:** buňky se stavem `counts:true` nebo s otevřeným
+  hlášením; položky s hlášeními nahoře se štítkem, kolik jich je; admin má
+  u řádku tlačítko *Vyřídit* (uzavře všechna a vrátí stav na „funkční“).
+- **Admin:** zvoneček v horní liště s počtem položek s nevyřízenými hlášeními;
+  v dialogu buňky ✓ u jednotlivého hlášení, *Vyřídit vše* a *Změnit stav*
+  (libovolný stav + komentář správce; uzavře otevřená hlášení).
 - **Stavy/ikony:** výchozí pětice (✓ zelená, ✗ červená, ! žlutá, ? růžová,
   – modrá) se jednorázově založí při prvním otevření adminem (`meta/techSeed`).
   Admin přidává vlastní (ikona z nabídky nebo vlastní znak, barva z palety
-  osmi, název, „počítá se mezi problémy"). Stav `reported` je `locked` —
+  osmi, název, „počítá se mezi problémy“). Stav `reported` je `locked` —
   nelze smazat, protože ho používá formulář hlášení.
 - **Rules:** `techRooms`/`techItems`/`techStatusTypes` zapisuje jen admin;
-  do `techStatus` smí učitel zapsat jen `statusId=='reported'` a
-  `handled==false`, cokoli jiného jen admin.
-**Ověřeno:** Playwright + in-memory Firebase stub (`scratchpad/e2e.js`) —
-založení tříd/vybavení/vlastního stavu, hlášení závady, odznak u zvonečku,
-zobrazení popisu, změna stavu adminem, vyřízení ze shrnutí, mobilní pohled.
+  do `techStatus` smí učitel zapsat jen stav `reported` (nebo ponechat
+  stávající) a nesmí měnit `note`; vyřizování hlášení jen admin.
+
+**Rules — vědomý kompromis:** pravidla u `techStatus` nekontrolují, že učitel
+pole `reports` jen rozšířil (že nemaže cizí hlášení). Kontrola velikosti pole
+by vyžadovala jistotu, že rules vidí výsledek transformace `arrayUnion` — to
+odsud nejde ověřit a chybný předpoklad by zablokoval všechna hlášení. Chráněný
+je aspoň `note` (komentář správce) a `statusId`. S emulátorem po ruce se dá
+doplnit `request.resource.data.reports.size() >= resource.data.get('reports', []).size()`.
+
+**Ověřeno:** Playwright + in-memory Firebase stub (`scratchpad/e2e.js`,
+`scratchpad/e2e2.js`) — založení tříd/vybavení/vlastního stavu; dva různí
+učitelé přidají tři hlášení k jedné buňce; učitel nevidí admin akce; vyřízení
+jednoho hlášení i všech; historie po uzavření zůstává; odznak u zvonečku;
+změna stavu adminem s komentářem; vyřízení ze shrnutí; mobilní pohled.
 
 ### ⬜ 3.4 Časy zvonění
 **Cíl:** u hodin (a přestávek) zobrazit časy začátku/konce; konfiguruje admin.
