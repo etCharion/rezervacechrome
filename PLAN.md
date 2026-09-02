@@ -186,24 +186,37 @@ závady; třídy i vybavení přidává admin; ikony stavů jsou konfigurovateln
 **Řešení:**
 - Nové kolekce `techRooms`, `techItems`, `techStatusTypes`, `techStatus`
   (viz datový model). Seznam tříd je **záměrně oddělený** od `rooms`.
-- Tabulka třídy × vybavení; na mobilu karty po třídách. Buňka = barevný štítek
-  s ikonou; číslo v rohu = počet otevřených hlášení, tečka = komentář správce.
-- **Hlášení:** klik na stav → *Nahlásit problém* → text → přidá se do
-  `reports[]` (arrayUnion) a stav se přepne na `reported` (růžový otazník).
-  K jedné buňce může přibývat libovolně mnoho hlášení od různých učitelů;
-  nic se nepřepisuje. V dialogu je seznam od nejnovějšího, vyřízená se skryjí
-  pod odkaz *zobrazit i vyřízená*.
+- Tabulka třídy × vybavení; na mobilu karty po třídách. **Buňka je jen barevná
+  ikona bez popisku** — významy nese legenda v pruhu nad tabulkou (viditelná
+  i na mobilu). Číslo v rohu = počet otevřených hlášení, tečka = komentář správce.
+- **Dialog buňky bez mezikroků:** všechny stavy jsou hned vidět jako řada
+  tlačítek, aktuální je zvýrazněný, pod nimi textové pole a seznam hlášení.
+  Admin přepne stav **jedním kliknutím a uloží se hned** (`pickTechStatus`);
+  komentář správce má vlastní tlačítko (`saveTechNote`). Učitel stavy jen vidí
+  (klikatelný je pouze `reported`) — napíše popis, uloží, a stav se přepne sám.
+- **Hlášení:** text + uložení → přidá se do `reports[]` (arrayUnion) a stav se
+  přepne na `reported` (růžový otazník). K jedné buňce může přibývat libovolně
+  mnoho hlášení od různých učitelů; nic se nepřepisuje. V dialogu je seznam od
+  nejnovějšího, vyřízená se skryjí pod odkaz *zobrazit i vyřízená*.
+  **Pozor:** reset textového pole v dialogu je navázaný na `cellKey`, ne na
+  `status` — jinak by přepnutí stavu smazalo rozepsaný text.
 - **Shrnutí pod tabulkou:** buňky se stavem `counts:true` nebo s otevřeným
   hlášením; položky s hlášeními nahoře se štítkem, kolik jich je; admin má
   u řádku tlačítko *Vyřídit* (uzavře všechna a vrátí stav na „funkční“).
 - **Admin:** zvoneček v horní liště s počtem položek s nevyřízenými hlášeními;
-  v dialogu buňky ✓ u jednotlivého hlášení, *Vyřídit vše* a *Změnit stav*
-  (libovolný stav + komentář správce; uzavře otevřená hlášení).
+  v dialogu buňky ✓ u jednotlivého hlášení a *Vyřídit vše*. Přepnutí stavu na
+  cokoli jiného než `reported` otevřená hlášení uzavře (bere je na vědomí).
 - **Stavy/ikony:** výchozí pětice (✓ zelená, ✗ červená, ! žlutá, ? růžová,
   – modrá) se jednorázově založí při prvním otevření adminem (`meta/techSeed`).
   Admin přidává vlastní (ikona z nabídky nebo vlastní znak, barva z palety
   osmi, název, „počítá se mezi problémy“). Stav `reported` je `locked` —
   nelze smazat, protože ho používá formulář hlášení.
+- **Nastavení:** rozdělené přepínačem na **Rezervace** (učebny a pomůcky,
+  uživatelé, allowlist, údržba dat) a **Technika** (třídy, vybavení, stavy).
+  Stav `settingsTab`; tlačítko „Spravovat" v záložce Technika na ni rovnou skočí.
+- **Barvy stavů** jsou CSS proměnné (`--st-bg/--st-bd/--st-fg`) na třídách
+  `.st-*`, aby se obarvil i vybraný stav v dialogu (jinak by `.tstat-opt`
+  specificitou vyhrálo).
 - **Rules:** `techRooms`/`techItems`/`techStatusTypes` zapisuje jen admin;
   do `techStatus` smí učitel zapsat jen stav `reported` (nebo ponechat
   stávající) a nesmí měnit `note`; vyřizování hlášení jen admin.
@@ -215,11 +228,11 @@ odsud nejde ověřit a chybný předpoklad by zablokoval všechna hlášení. Ch
 je aspoň `note` (komentář správce) a `statusId`. S emulátorem po ruce se dá
 doplnit `request.resource.data.reports.size() >= resource.data.get('reports', []).size()`.
 
-**Ověřeno:** Playwright + in-memory Firebase stub (`scratchpad/e2e.js`,
-`scratchpad/e2e2.js`) — založení tříd/vybavení/vlastního stavu; dva různí
-učitelé přidají tři hlášení k jedné buňce; učitel nevidí admin akce; vyřízení
-jednoho hlášení i všech; historie po uzavření zůstává; odznak u zvonečku;
-změna stavu adminem s komentářem; vyřízení ze shrnutí; mobilní pohled.
+**Ověřeno:** Playwright + in-memory Firebase stub — `e2e.js` (správa v Nastavení
+vč. vlastního stavu), `e2e2.js` (tři hlášení od dvou učitelů k jedné buňce,
+vyřizování, historie), `e2e3.js` (ikony bez popisků, legenda, dvě kategorie
+v Nastavení, přepnutí stavu jedním klikem, automatické přepnutí po hlášení
+učitele, rozepsaný text přežije přepnutí stavu, mobilní pohled).
 
 ### ⬜ 3.4 Časy zvonění
 **Cíl:** u hodin (a přestávek) zobrazit časy začátku/konce; konfiguruje admin.

@@ -323,6 +323,7 @@
       .detail-row .dv { font-weight: 600; color: var(--text); }
 
       /* settings */
+      .settings-tabs { display: inline-flex; margin-bottom: 18px; }
       .settings-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(320px,1fr)); gap: 20px; max-width: 1120px; align-items: start; }
       .user-row { display: flex; align-items: center; gap: 11px; padding: 10px 12px; }
       .user-row .urname { display: flex; align-items: center; gap: 7px; min-width: 0; }
@@ -381,15 +382,19 @@
       .mp-tag.tag-weeks { background: transparent; color: var(--gold-strong); border-color: var(--rec-border); border-style: dashed; }
 
       /* ---- Stav techniky ---- */
-      /* Barevná paleta stavů – admin ji přiřazuje jednotlivým ikonám stavu. */
-      .st-green  { background: #ebf7f1; border-color: #cdeadd; color: #1f7a55; }
-      .st-red    { background: #fbeceb; border-color: #f0c9c5; color: #c0463d; }
-      .st-amber  { background: #f9f1dd; border-color: #ecdcae; color: #9a780f; }
-      .st-pink   { background: #fdeaf3; border-color: #f2c4da; color: #b23a70; }
-      .st-blue   { background: #eaf2fb; border-color: #cfe2f5; color: #0f4f8f; }
-      .st-purple { background: #f0ecfb; border-color: #d9d0f3; color: #59459f; }
-      .st-teal   { background: #e6f5f4; border-color: #c3e5e2; color: #17706a; }
-      .st-gray   { background: #eef1f5; border-color: #d3dae3; color: #5a6678; }
+      /* Barevná paleta stavů – admin ji přiřazuje jednotlivým ikonám stavu.
+         Barvy jsou proměnné, aby fungovaly i na vybraném tlačítku v dialogu. */
+      .st-green  { --st-bg:#ebf7f1; --st-bd:#cdeadd; --st-fg:#1f7a55; }
+      .st-red    { --st-bg:#fbeceb; --st-bd:#f0c9c5; --st-fg:#c0463d; }
+      .st-amber  { --st-bg:#f9f1dd; --st-bd:#ecdcae; --st-fg:#9a780f; }
+      .st-pink   { --st-bg:#fdeaf3; --st-bd:#f2c4da; --st-fg:#b23a70; }
+      .st-blue   { --st-bg:#eaf2fb; --st-bd:#cfe2f5; --st-fg:#0f4f8f; }
+      .st-purple { --st-bg:#f0ecfb; --st-bd:#d9d0f3; --st-fg:#59459f; }
+      .st-teal   { --st-bg:#e6f5f4; --st-bd:#c3e5e2; --st-fg:#17706a; }
+      .st-gray   { --st-bg:#eef1f5; --st-bd:#d3dae3; --st-fg:#5a6678; }
+      /* záloha, kdyby stav barvu neměl */
+      :root { --st-bg: var(--surface-3); --st-bd: var(--border-strong); --st-fg: var(--text-muted); }
+      .ir-ico { background: var(--st-bg); border: 1px solid var(--st-bd); color: var(--st-fg); }
 
       table.grid.tech { min-width: 920px; }
       table.grid.tech thead th { vertical-align: bottom; }
@@ -404,8 +409,12 @@
         width: 100%; border-radius: var(--r-md); min-height: 40px; padding: 6px 8px;
         display: flex; align-items: center; justify-content: center; gap: 6px;
         font-family: inherit; font-size: 12px; font-weight: 600; line-height: 1.2;
-        border: 1px solid transparent; position: relative; transition: box-shadow .12s;
+        border: 1px solid var(--st-bd); background: var(--st-bg); color: var(--st-fg);
+        position: relative; transition: box-shadow .12s;
       }
+      /* v tabulce je jen ikona – co znamená, říká legenda nad tabulkou */
+      .tstat.only-icon { min-height: 36px; padding: 6px; }
+      .tstat.only-icon .ts-glyph { font-size: 17px; }
       .tstat:hover { box-shadow: 0 0 0 2px currentColor inset; }
       .tstat .ts-glyph { font-size: 14px; font-weight: 800; line-height: 1; flex-shrink: 0; }
       .tstat .ts-l { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
@@ -424,9 +433,9 @@
         color: var(--text-muted); text-align: left; transition: all .12s;
       }
       .tstat-opt .ts-glyph { font-size: 15px; font-weight: 800; line-height: 1; }
-      .tstat-opt:hover { border-color: #c3ccd8; background: var(--surface-2); }
-      .tstat-opt.on { box-shadow: 0 0 0 3px rgba(19,102,179,.12); }
-      .tstat-opt.on .ts-l { text-decoration: none; }
+      .tstat-opt:hover:not(.on):not(:disabled) { border-color: #c3ccd8; background: var(--surface-2); }
+      /* vybraný stav se obarví podle své palety */
+      .tstat-opt.on { background: var(--st-bg); border-color: var(--st-fg); color: var(--st-fg); box-shadow: 0 0 0 3px var(--st-bg); }
 
       /* výběr ikony a barvy při zakládání stavu */
       .glyph-grid { display: flex; flex-wrap: wrap; gap: 6px; }
@@ -444,6 +453,17 @@
       .issue-row .ir-main { flex: 1; min-width: 0; border: none; background: transparent; text-align: left; font-family: inherit; padding: 0; }
       .issue-row .ir-actions { display: flex; align-items: center; gap: 7px; flex-shrink: 0; margin-left: auto; }
       .pill-new { background: #c0463d; color: #fff; font-size: 9.5px; font-weight: 700; letter-spacing: .04em; text-transform: uppercase; padding: 2px 6px; border-radius: 999px; }
+
+      /* legenda stavů nad tabulkou */
+      .tech-legend { display: flex; flex-wrap: wrap; gap: 8px 16px; padding: 11px 20px; background: var(--surface-2); border-bottom: 1px solid var(--border); }
+      .tech-legend .lg { display: inline-flex; align-items: center; gap: 7px; font-size: 12px; color: var(--text-muted); font-weight: 500; }
+      .tech-legend .ir-ico { width: 22px; height: 22px; border-radius: 6px; display: grid; place-items: center; font-size: 12.5px; font-weight: 800; border: 1px solid transparent; }
+
+      /* výběr stavu přímo v dialogu – přepnutí se uloží hned */
+      .status-row { display: flex; flex-wrap: wrap; gap: 7px; }
+      .status-row .tstat-opt { padding: 8px 11px; }
+      .status-row .tstat-opt:disabled { cursor: default; opacity: .55; }
+      .status-row .tstat-opt.on:disabled { opacity: 1; }
 
       /* historie hlášení v dialogu */
       .report-list { display: flex; flex-direction: column; gap: 8px; max-height: 280px; overflow-y: auto; padding-right: 2px; }
@@ -502,7 +522,7 @@
     <div id="root"></div>
 
     <script type="text/babel">
-      const { useState, useEffect, useMemo } = React;
+      const { useState, useEffect, useMemo, useRef } = React;
 
       // ---------- util ----------
       // Pozor: nikdy nepřevádět lokální datum přes toISOString() – pracuje v UTC
@@ -1071,43 +1091,42 @@
       // je oddělený od učeben a pomůcek v rozvrhu — spravuje ho admin v Nastavení.
 
       // Barevný štítek stavu (ikona + název)
-      function StatusChip({ type, extra='', note, count=0 }){
+      function StatusChip({ type, extra='', note, count=0, iconOnly=false }){
         const title = [type.label, count ? `${count} ${plural(count,'otevřené hlášení','otevřená hlášení','otevřených hlášení')}` : '', note]
           .filter(Boolean).join(' — ');
         return (
-          <span className={`tstat st-${type.color} ${extra}`} title={title}>
+          <span className={`tstat st-${type.color} ${iconOnly?'only-icon':''} ${extra}`} title={title}>
             <span className="ts-glyph">{type.glyph}</span>
-            <span className="ts-l">{type.label}</span>
+            {!iconOnly && <span className="ts-l">{type.label}</span>}
             {count>0 ? <span className="ts-count">{count}</span> : (note ? <span className="ts-dot"></span> : null)}
           </span>
         );
       }
 
       // Dialog nad jednou buňkou tabulky.
-      // Učitel: přečte historii hlášení a přidá další.
-      // Admin: navíc mění stav ručně a hlášení vyřizuje (jedno po druhém, nebo všechna).
-      function TechCellDialog({ open, room, item, status, types, typeOf, isAdmin, onClose, onReport, onSetStatus, onResolveAll, onResolveOne }){
-        const [mode,setMode]=useState('view');     // 'view' | 'report' | 'edit'
-        const [reportText,setReportText]=useState("");
-        const [statusId,setStatusId]=useState(TECH_OK_ID);
-        const [note,setNote]=useState("");
+      // Stavy jsou hned vidět – admin přepne jedním kliknutím (uloží se rovnou).
+      // Učitel napíše popis problému; uložením se stav sám přepne na „nahlášený problém“.
+      function TechCellDialog({ open, room, item, status, types, typeOf, isAdmin, onClose, onReport, onPickStatus, onSaveNote, onResolveAll, onResolveOne }){
+        const [text,setText]=useState("");
         const [showDone,setShowDone]=useState(false);
+        const taRef = useRef(null);
 
+        // Reset jen při otevření / přepnutí na jinou buňku — ne při každém zápisu.
+        // Jinak by přepnutí stavu smazalo rozepsaný text.
+        const cellKey = `${room?.id || ''}__${item?.id || ''}`;
         useEffect(()=>{
           if(!open) return;
-          setMode('view');
-          setReportText("");
           setShowDone(false);
-          setStatusId(status?.statusId || TECH_OK_ID);
-          setNote(status?.note || "");
-        },[open, status]);
+          setText(isAdmin ? (status?.note || "") : "");
+        },[open, isAdmin, cellKey]);
 
         if(!open) return null;
-        const type = typeOf(status?.statusId);
+        const current = status?.statusId || (types.find(t=>t.id===TECH_OK_ID)?.id || types[0]?.id);
         const all = sortedReports(status);
         const open_ = all.filter(r=>!r.done);
         const done_ = all.filter(r=>r.done);
         const visible = showDone ? all : open_;
+        const noteChanged = isAdmin && text.trim() !== (status?.note || "").trim();
 
         const reportRow = (r)=>(
           <div key={r.id} className={`report-item ${r.done?'done':''}`}>
@@ -1139,102 +1158,71 @@
 
               <div className="modal-body">
                 <div className="field">
-                  <label>Současný stav</label>
-                  <div style={{display:'flex',alignItems:'center',gap:'9px',flexWrap:'wrap'}}>
-                    <StatusChip type={type} extra="big"/>
+                  <label style={{display:'flex',alignItems:'center',gap:'8px'}}>
+                    Stav
                     {open_.length>0 && <span className="pill-new">{open_.length} {plural(open_.length,'otevřené hlášení','otevřená hlášení','otevřených hlášení')}</span>}
+                  </label>
+                  <div className="status-row">
+                    {types.map(t=>{
+                      // učitel smí přepnout jen na „nahlášený problém“, ostatní jen vidí
+                      const selectable = isAdmin || t.id===TECH_REPORTED_ID;
+                      return (
+                        <button key={t.id} type="button" disabled={!selectable}
+                          className={`tstat-opt st-${t.color} ${current===t.id?'on':''}`}
+                          title={selectable ? `Nastavit: ${t.label}` : t.label}
+                          onClick={()=>{
+                            if(isAdmin){ onPickStatus(t.id); }
+                            else { taRef.current && taRef.current.focus(); }
+                          }}>
+                          <span className="ts-glyph">{t.glyph}</span><span className="ts-l">{t.label}</span>
+                        </button>
+                      );
+                    })}
+                  </div>
+                  <div className="helptext" style={{marginTop:'7px'}}>
+                    {isAdmin
+                      ? 'Kliknutím na stav se rovnou uloží. Otevřená hlášení se tím označí za vyřízená.'
+                      : 'Stav se přepne sám, jakmile uložíš popis problému.'}
                   </div>
                 </div>
 
-                {status?.note ? (
-                  <div className="note-card">
-                    <div className="nc-text">{status.note}</div>
-                    <div className="nc-meta">
-                      {['Komentář správce', status.updatedByName ? stripTitle(status.updatedByName) : '', czDateTime(status.updatedAt)].filter(Boolean).join(' · ')}
-                    </div>
-                  </div>
-                ) : null}
+                <div className="field">
+                  <label>{isAdmin ? 'Komentář správce' : 'Popis problému'}</label>
+                  <textarea ref={taRef} className="input" rows={3} style={{resize:'vertical'}}
+                    placeholder={isAdmin ? 'Např. objednaná nová redukce, dorazí příští týden.' : 'Např. televize se nepřepne na HDMI 2, obraz zůstane černý.'}
+                    value={text} onChange={e=>setText(e.target.value)} />
+                  {!isAdmin && open_.length>0 && (
+                    <div className="helptext" style={{marginTop:'6px'}}>Přidá se jako další hlášení k {open_.length} už otevřeným — nic se nepřepíše.</div>
+                  )}
+                </div>
 
-                {mode==='view' && (
-                  <div className="field">
-                    <label style={{display:'flex',alignItems:'center',gap:'8px'}}>
-                      Hlášení od učitelů
-                      {done_.length>0 && (
-                        <button type="button" className="link-btn" onClick={()=>setShowDone(v=>!v)}>
-                          {showDone ? 'skrýt vyřízená' : `zobrazit i vyřízená (${done_.length})`}
-                        </button>
-                      )}
-                    </label>
-                    {visible.length===0
-                      ? <div className="helptext">{all.length===0 ? 'Zatím nikdo nic nenahlásil.' : 'Všechna hlášení jsou vyřízená.'}</div>
-                      : <div className="report-list">{visible.map(reportRow)}</div>}
-                  </div>
-                )}
 
-                {mode==='report' && (
-                  <div className="field">
-                    <label>Co je za problém?</label>
-                    <textarea className="input" rows={4} style={{resize:'vertical'}} autoFocus
-                      placeholder="Např. televize se nepřepne na HDMI 2, obraz zůstane černý."
-                      value={reportText} onChange={e=>setReportText(e.target.value)} />
-                    <div className="helptext" style={{marginTop:'6px'}}>
-                      {open_.length>0
-                        ? `Přidá se jako další hlášení k ${open_.length} už otevřeným — nic se nepřepíše.`
-                        : 'Hlášení se uloží k této položce a admin dostane upozornění.'}
-                    </div>
-                  </div>
-                )}
-
-                {mode==='edit' && isAdmin && (
-                  <>
-                    <div className="field">
-                      <label>Nastavit stav</label>
-                      <div className="tstat-pick">
-                        {types.map(t=>(
-                          <button key={t.id} type="button"
-                            className={`tstat-opt st-${t.color} ${statusId===t.id?'on':''}`}
-                            style={statusId===t.id ? null : {background:'var(--surface)',borderColor:'var(--border-strong)',color:'var(--text-muted)'}}
-                            onClick={()=>setStatusId(t.id)}>
-                            <span className="ts-glyph">{t.glyph}</span><span className="ts-l">{t.label}</span>
-                          </button>
-                        ))}
-                      </div>
-                    </div>
-                    <div className="field">
-                      <label>Komentář správce</label>
-                      <textarea className="input" rows={3} style={{resize:'vertical'}}
-                        placeholder="Např. objednaná nová redukce, dorazí příští týden."
-                        value={note} onChange={e=>setNote(e.target.value)} />
-                    </div>
-                    {open_.length>0 && (
-                      <div className="banner"><IconInfo/> Uložením se {open_.length} {plural(open_.length,'otevřené hlášení označí','otevřená hlášení označí','otevřených hlášení označí')} za vyřízená — historie zůstane.</div>
+                <div className="field">
+                  <label style={{display:'flex',alignItems:'center',gap:'8px'}}>
+                    Hlášení od učitelů
+                    {done_.length>0 && (
+                      <button type="button" className="link-btn" onClick={()=>setShowDone(v=>!v)}>
+                        {showDone ? 'skrýt vyřízená' : `zobrazit i vyřízená (${done_.length})`}
+                      </button>
                     )}
-                  </>
-                )}
+                  </label>
+                  {visible.length===0
+                    ? <div className="helptext">{all.length===0 ? 'Zatím nikdo nic nenahlásil.' : 'Všechna hlášení jsou vyřízená.'}</div>
+                    : <div className="report-list">{visible.map(reportRow)}</div>}
+                </div>
               </div>
 
               <div className="modal-foot">
-                {mode==='view' && (
+                <button className="btn" onClick={onClose}>Zavřít</button>
+                {isAdmin ? (
                   <>
-                    <button className="btn" onClick={onClose}>Zavřít</button>
-                    {isAdmin && open_.length>0 && (
-                      <button className="btn" onClick={onResolveAll}><IconCheck size={15}/> Vyřídit vše</button>
-                    )}
-                    {isAdmin && <button className="btn" onClick={()=>setMode('edit')}><IconSettings size={15}/> Změnit stav</button>}
-                    <button className="btn primary" onClick={()=>setMode('report')}><IconAlert size={15}/> Nahlásit problém</button>
+                    {open_.length>0 && <button className="btn" onClick={onResolveAll}><IconCheck size={15}/> Vyřídit vše</button>}
+                    <button className="btn primary" disabled={!noteChanged} onClick={()=>onSaveNote(text.trim())}>Uložit komentář</button>
                   </>
-                )}
-                {mode==='report' && (
-                  <>
-                    <button className="btn" onClick={()=>setMode('view')}>Zpět</button>
-                    <button className="btn primary" disabled={!reportText.trim()} onClick={()=>onReport(reportText.trim())}>Odeslat hlášení</button>
-                  </>
-                )}
-                {mode==='edit' && (
-                  <>
-                    <button className="btn" onClick={()=>setMode('view')}>Zpět</button>
-                    <button className="btn primary" onClick={()=>onSetStatus({statusId, note:note.trim()})}>Uložit stav</button>
-                  </>
+                ) : (
+                  <button className="btn primary" disabled={!text.trim()} onClick={()=>onReport(text.trim())}>
+                    <IconAlert size={15}/> Nahlásit problém
+                  </button>
                 )}
               </div>
             </div>
@@ -1441,9 +1429,8 @@
                         .filter(Boolean).join(' — ');
                       return (
                         <td key={it.id} className="slot">
-                          <button className={`tstat st-${type.color}`} onClick={()=>onOpen(room,it)} title={title}>
+                          <button className={`tstat only-icon st-${type.color}`} onClick={()=>onOpen(room,it)} title={title}>
                             <span className="ts-glyph">{type.glyph}</span>
-                            <span className="ts-l">{type.label}</span>
                             {open>0 ? <span className="ts-count">{open}</span> : (st?.note ? <span className="ts-dot"></span> : null)}
                           </button>
                         </td>
@@ -1476,7 +1463,7 @@
                     return (
                       <button key={it.id} className="tech-mrow" onClick={()=>onOpen(room,it)}>
                         <span className="tm-name">{it.name}</span>
-                        <StatusChip type={type} extra="chip" note={st?.note} count={openReports(st).length}/>
+                        <StatusChip type={type} extra="chip" iconOnly note={st?.note} count={openReports(st).length}/>
                       </button>
                     );
                   })}
@@ -1525,6 +1512,7 @@
         const [creatingTechItem,setCreatingTechItem]=useState(false);
         const [editingTechType,setEditingTechType]=useState(null);
         const [creatingTechType,setCreatingTechType]=useState(false);
+        const [settingsTab,setSettingsTab]=useState('rezervace');  // 'rezervace' | 'technika'
 
         // moje přehledy
         const [mySingles,setMySingles]=useState([]);
@@ -1850,14 +1838,23 @@
             doneAt: new Date().toISOString(),
           });
 
-        // admin: ruční nastavení stavu; otevřená hlášení tím bere na vědomí
-        async function applyTechStatus(roomId, itemId, payload){
+        // admin: přepnutí stavu jedním kliknutím; zároveň bere otevřená hlášení
+        // na vědomí (pokud ovšem nepřepíná zpět na „nahlášený problém“)
+        async function pickTechStatus(roomId, itemId, statusId){
           const st = statusFor(roomId, itemId);
           await techRef(roomId,itemId).set({
             roomId, itemId,
-            statusId: payload.statusId,
-            note: payload.note || '',
-            reports: closeReports(st),
+            statusId,
+            reports: statusId===TECH_REPORTED_ID ? techReports(st) : closeReports(st),
+            ...whoAmI(),
+          }, {merge:true});
+        }
+
+        // admin: komentář správce (hlášení učitelů se nedotýká)
+        async function saveTechNote(roomId, itemId, note){
+          await techRef(roomId,itemId).set({
+            roomId, itemId,
+            note: note || '',
             ...whoAmI(),
           }, {merge:true});
         }
@@ -2376,19 +2373,22 @@
                         <div className="ph-sub">{techRooms.length} {plural(techRooms.length,'třída','třídy','tříd')} · kliknutím na stav si přečteš hlášení nebo přidáš vlastní</div>
                       </div>
                       <div className="spacer"></div>
-                      <div className="legend hide-mobile">
-                        {techTypes.map(t=>(
-                          <span className="lg" key={t.id} title={t.label}>
-                            <span className={`ir-ico st-${t.color}`} style={{width:'20px',height:'20px',borderRadius:'6px',fontSize:'12px'}}>{t.glyph}</span> {t.label}
-                          </span>
-                        ))}
-                      </div>
                       {isAdmin && (
-                        <button className="btn sm hide-mobile" title="Spravovat třídy, vybavení a stavy" onClick={()=>setView('nastaveni')}>
+                        <button className="btn sm" title="Spravovat třídy, vybavení a stavy"
+                          onClick={()=>{ setSettingsTab('technika'); setView('nastaveni'); }}>
                           <IconSettings size={15}/> Spravovat
                         </button>
                       )}
                     </div>
+                    {techTypes.length>0 && (
+                      <div className="tech-legend">
+                        {techTypes.map(t=>(
+                          <span className="lg" key={t.id}>
+                            <span className={`ir-ico st-${t.color}`}>{t.glyph}</span> {t.label}
+                          </span>
+                        ))}
+                      </div>
+                    )}
                     {(techRooms.length===0 || techItems.length===0) ? (
                       <div className="dc-empty" style={{padding:'22px'}}>
                         {techRooms.length===0 ? 'Zatím nejsou přidané žádné třídy.' : 'Zatím není přidané žádné sledované vybavení.'}
@@ -2452,7 +2452,14 @@
               )}
 
               {view==='nastaveni' && isAdmin && (
+                <>
+                <div className="seg settings-tabs">
+                  <button className={settingsTab==='rezervace'?'on':''} onClick={()=>setSettingsTab('rezervace')}><IconCalendar size={15}/> Rezervace</button>
+                  <button className={settingsTab==='technika'?'on':''} onClick={()=>setSettingsTab('technika')}><IconWrench size={15}/> Technika</button>
+                </div>
+
                 <div className="settings-grid">
+                  {settingsTab==='rezervace' && (<>
                   <section className="panel">
                     <div className="panel-head"><h2>Učebny a pomůcky</h2><div className="spacer"></div><button className="btn primary sm" onClick={()=>setCreatingRoom(true)}><IconPlus size={15}/> Přidat</button></div>
                     <RoomsManager rooms={rooms} onReorder={reorderRooms} onEdit={setEditingRoom}
@@ -2499,9 +2506,31 @@
                     </div>
                   </section>
 
+                  {migrationDone === false && (
+                    <section className="panel" style={{alignSelf:'start'}}>
+                      <div className="panel-head"><h2>Údržba dat</h2></div>
+                      <div style={{padding:'16px'}}>
+                        <div className="maint-card">
+                          <span className="room-ico equip"><IconDatabase size={17}/></span>
+                          <div style={{flex:1,minWidth:0}}>
+                            <div style={{fontWeight:600,fontSize:'14px'}}>Opravit posunutá data (+1 den)</div>
+                            <div className="ph-sub" style={{whiteSpace:'normal',fontSize:'12.5px',color:'var(--text-faint)'}}>Jednorázová migrace po opravě časového pásma. Spusť ji právě jednou, hned po nasazení opravené verze.</div>
+                          </div>
+                        </div>
+                        <button className="btn" style={{marginTop:'12px'}}
+                          onClick={()=>{ if(window.confirm('Opravdu posunout všechna uložená data o +1 den? Akce je jednorázová a nevratná.')) guard(()=>runDateShiftMigration(), 'Migraci se nepodařilo dokončit'); }}>
+                          <IconDatabase size={15}/> Spustit opravu
+                        </button>
+                      </div>
+                    </section>
+                  )}
+
+                  </>)}
+
+                  {settingsTab==='technika' && (<>
                   <section className="panel" style={{alignSelf:'start'}}>
                     <div className="panel-head">
-                      <h2>Třídy — stav techniky</h2>
+                      <h2>Třídy</h2>
                       <div className="spacer"></div>
                       <button className="btn primary sm" onClick={()=>setCreatingTechRoom(true)}><IconPlus size={15}/> Přidat</button>
                     </div>
@@ -2559,25 +2588,9 @@
                       onDelete={(x)=>{ if(window.confirm(`Opravdu odebrat stav „${x.label}“? Buňky s tímto stavem se zobrazí jako neznámé.`)) guard(()=>removeTechType(x.id), 'Stav se nepodařilo odebrat'); }}/>
                   </section>
 
-                  {migrationDone === false && (
-                    <section className="panel" style={{alignSelf:'start'}}>
-                      <div className="panel-head"><h2>Údržba dat</h2></div>
-                      <div style={{padding:'16px'}}>
-                        <div className="maint-card">
-                          <span className="room-ico equip"><IconDatabase size={17}/></span>
-                          <div style={{flex:1,minWidth:0}}>
-                            <div style={{fontWeight:600,fontSize:'14px'}}>Opravit posunutá data (+1 den)</div>
-                            <div className="ph-sub" style={{whiteSpace:'normal',fontSize:'12.5px',color:'var(--text-faint)'}}>Jednorázová migrace po opravě časového pásma. Spusť ji právě jednou, hned po nasazení opravené verze.</div>
-                          </div>
-                        </div>
-                        <button className="btn" style={{marginTop:'12px'}}
-                          onClick={()=>{ if(window.confirm('Opravdu posunout všechna uložená data o +1 den? Akce je jednorázová a nevratná.')) guard(()=>runDateShiftMigration(), 'Migraci se nepodařilo dokončit'); }}>
-                          <IconDatabase size={15}/> Spustit opravu
-                        </button>
-                      </div>
-                    </section>
-                  )}
+                  </>)}
                 </div>
+                </>
               )}
             </main>
 
@@ -2626,9 +2639,14 @@
                 setTechDialog(null);
                 showToast('Hlášení uloženo, administrátor se o něm dozví.', 'ok');
               }}
-              onSetStatus={async (payload)=>{
-                await guard(()=>applyTechStatus(techDialog.room.id, techDialog.item.id, payload), 'Stav se nepodařilo uložit');
+              onPickStatus={(statusId)=> guard(async ()=>{
+                await pickTechStatus(techDialog.room.id, techDialog.item.id, statusId);
+                showToast(`Stav nastaven: ${typeOf(statusId).label}`, 'ok');
+              }, 'Stav se nepodařilo uložit')}
+              onSaveNote={async (note)=>{
+                await guard(()=>saveTechNote(techDialog.room.id, techDialog.item.id, note), 'Komentář se nepodařilo uložit');
                 setTechDialog(null);
+                showToast('Komentář uložen.', 'ok');
               }}
               onResolveAll={async ()=>{
                 await guard(()=>resolveTechProblem(techDialog.room.id, techDialog.item.id), 'Hlášení se nepodařilo vyřídit');

@@ -35,9 +35,14 @@ Záložka **Technika** je samostatný systém — má **vlastní seznam tříd**
 nijak nesouvisí s učebnami a pomůckami v rozvrhu.
 
 - **Tabulka** — řádky jsou třídy, sloupce sledované vybavení (televize,
-  Chromecast, prezentér…). Každá buňka je barevný stav s ikonou.
-- **Hlášení problému** — kdokoli klikne na stav, zvolí *Nahlásit problém* a
-  napíše, co je špatně. Stav se přepne na růžový otazník („nahlášený problém“).
+  Chromecast, prezentér…). Buňka je jen barevná ikona; co která znamená, říká
+  legenda nad tabulkou. Číslo v rohu = počet otevřených hlášení.
+- **Hlášení problému (učitel)** — klikne na buňku, napíše do pole *Popis
+  problému*, co je špatně, a uloží. Stav se sám přepne na růžový otazník
+  („nahlášený problém“) — nic dalšího nastavovat nemusí.
+- **Změna stavu (admin)** — v dialogu jsou rovnou všechny stavy vedle sebe
+  a aktuální je zvýrazněný. Přepnutí je jedno kliknutí a uloží se hned;
+  pod tím je pole na komentář správce.
 - **Historie hlášení** — k jedné položce může přibývat libovolně mnoho hlášení
   od různých učitelů (i od téhož). Nic se nepřepisuje: v dialogu je seznam
   hlášení od nejnovějšího, u každého kdo a kdy ho napsal. Vyřízená hlášení
@@ -72,9 +77,9 @@ smazat.
 
 ### Kdo co smí
 
-- **Učitel** — čte tabulku i historii hlášení a přidává vlastní. Stav ručně
-  přepnout nemůže a cizí hlášení nemaže (aby zůstalo dohledatelné, kdo co
-  nahlásil).
+- **Učitel** — čte tabulku i historii hlášení a přidává vlastní. Stavy vidí,
+  ale ručně přepnout je nemůže (přepne se sám podle hlášení) a cizí hlášení
+  nemaže — aby zůstalo dohledatelné, kdo co nahlásil.
 - **Admin** — spravuje třídy, vybavení i stavy, mění stavy ručně a vyřizuje
   hlášení.
 
@@ -104,6 +109,13 @@ od různých učitelů navzájem nepřepíšou.
 
    ⚠️ Bez nasazených rules může kterýkoli přihlášený uživatel obejít
    omezení aplikace přímým zápisem do databáze.
+
+## Nastavení
+
+Nastavení je rozdělené na dvě kategorie, mezi kterými se přepíná nahoře:
+
+- **Rezervace** — učebny a pomůcky, uživatelé, předschválené e-maily, údržba dat.
+- **Technika** — třídy, sledované vybavení, stavy a ikony.
 
 ## Role a první přihlášení
 
