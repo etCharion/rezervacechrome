@@ -15,6 +15,8 @@ a Firebase (Google přihlášení + Firestore).
   samostatně.
 - **Moje rezervace** — přehled vlastních jednorázových i opakovaných
   rezervací s možností rušení a proklikem na den.
+- **Stav techniky** — samostatná záložka: tabulka tříd × vybavení, ve které
+  učitelé hlásí, co nefunguje (viz níže).
 - **Role a schvalování** — nový účet čeká na schválení adminem; admin může
   e-maily předschválit (allowlist), spravuje učebny, pomůcky a uživatele.
 
@@ -26,6 +28,45 @@ a Firebase (Google přihlášení + Firestore).
 | červená | jednorázová rezervace |
 | žlutá | opakovaná — hodina musí být v učebně |
 | modrá | opakovaná — hodina může být i jinde |
+
+## Stav techniky ve třídách
+
+Záložka **Technika** je samostatný systém — má **vlastní seznam tříd**, který
+nijak nesouvisí s učebnami a pomůckami v rozvrhu.
+
+- **Tabulka** — řádky jsou třídy, sloupce sledované vybavení (televize,
+  Chromecast, prezentér…). Každá buňka je barevný stav s ikonou.
+- **Hlášení problému** — kdokoli klikne na stav, zvolí *Nahlásit problém* a
+  napíše, co je špatně. Stav se přepne na růžový otazník („nahlášený problém“)
+  a hlášení se počítá jako nevyřízené. Po dalším kliknutí je popis vidět.
+- **Shrnutí pod tabulkou** — seznam všech problémů a nevyřízených věcí; nová
+  hlášení jsou nahoře se štítkem *nové*.
+- **Admin** — v horní liště má zvoneček s počtem nevyřízených hlášení. U každé
+  buňky i u každého řádku shrnutí může problém *vyřídit* (stav se vrátí na
+  „funkční“) nebo nastavit libovolný jiný stav s komentářem.
+
+### Výchozí stavy
+
+| Ikona | Stav | Význam | Ve shrnutí |
+|---|---|---|---|
+| ✓ zelená | Funkční | vše v pořádku (výchozí stav buňky) | ne |
+| ✗ červená | Nefunkční | nefunguje, je potřeba oprava | ano |
+| ! žlutá | Drobný problém | funguje, ale pracuje se na tom / pozor | ano |
+| ? růžová | Nahlášený problém | hlášení od učitele, admin ho ještě neviděl | ano |
+| – modrá | Není k dispozici | vybavení ve třídě není | ne |
+
+Pětice se **jednorázově založí sama** při prvním otevření aplikace adminem
+(příznak `meta/techSeed`). Admin může v *Nastavení → Stavy a ikony* přidat
+vlastní stavy — vybere ikonu, barvu, název a jestli se mají počítat mezi
+problémy. Stav „nahlášený problém“ používá formulář hlášení, proto ho nelze
+smazat.
+
+### Kdo co smí
+
+- **Učitel** — čte tabulku a hlásí problémy. Stav ručně přepnout nemůže
+  (aby zůstalo dohledatelné, kdo co nahlásil).
+- **Admin** — spravuje třídy, vybavení i stavy, mění stavy ručně a vyřizuje
+  hlášení.
 
 ## Nasazení
 
@@ -65,7 +106,11 @@ a Firebase (Google přihlášení + Firestore).
 | `reservations` | jednorázové rezervace: `dateISO`, `roomId`, `period`, `teacherId`, `note`, `createdBy` |
 | `recurring` | týdenní série: `startISO`, `endISO`, `mode` (`weeks`/`until`), `weeks`, `exceptions[]`, `allowElsewhere`, … |
 | `allowlist` | předschválené e-maily (ID dokumentu = e-mail) |
-| `meta` | interní příznaky (např. provedené migrace dat) |
+| `techRooms` | třídy pro záložku Technika: `name`, `floor`, `order` |
+| `techItems` | sledované vybavení (sloupce tabulky): `name`, `order` |
+| `techStatusTypes` | stavy/ikony: `label`, `glyph`, `color`, `counts`, `order`, `locked` |
+| `techStatus` | stav jedné položky v jedné třídě, ID `{roomId}__{itemId}`: `statusId`, `note`, `handled`, `reportedBy(Name)`, `updatedBy(Name)`, `updatedAt` |
+| `meta` | interní příznaky (např. provedené migrace dat, založení výchozích stavů) |
 
 Datumy se ukládají jako řetězce `RRRR-MM-DD` v místním (českém) čase.
 

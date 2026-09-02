@@ -72,6 +72,37 @@ service cloud.firestore {
                              || resource.data.teacherId == request.auth.uid));
     }
 
+    // ---- Stav techniky ve třídách (samostatný systém, nezávislý na rozvrhu) ----
+
+    // seznam tříd a sledovaného vybavení spravuje jen admin
+    match /techRooms/{roomId} {
+      allow read: if isApproved();
+      allow write: if isAdmin();
+    }
+    match /techItems/{itemId} {
+      allow read: if isApproved();
+      allow write: if isAdmin();
+    }
+    // ikony/stavy (zelená fajfka, červený křížek, …) zakládá a upravuje jen admin
+    match /techStatusTypes/{typeId} {
+      allow read: if isApproved();
+      allow write: if isAdmin();
+    }
+
+    // stav jedné položky v jedné třídě; ID dokumentu je `{roomId}__{itemId}`
+    match /techStatus/{statusId} {
+      allow read: if isApproved();
+      // učitel smí jen nahlásit problém: stav 'reported' a nevyřízeno.
+      // Libovolný stav (vč. vyřízení hlášení) nastavuje jen admin.
+      // Pozn.: ID 'reported' musí odpovídat TECH_REPORTED_ID v index.html.
+      allow create, update: if isAdmin()
+        || (isApproved()
+            && request.resource.data.updatedBy == request.auth.uid
+            && request.resource.data.statusId == 'reported'
+            && request.resource.data.handled == false);
+      allow delete: if isAdmin();
+    }
+
     match /allowlist/{email} {
       // při prvním přihlášení si uživatel smí přečíst svůj záznam
       allow get: if signedIn() && request.auth.token.email == email;

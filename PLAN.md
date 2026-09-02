@@ -8,8 +8,8 @@
 
 Stav položek: ⬜ čeká · 🔄 rozpracováno · ✅ hotovo · ❌ zamítnuto/odloženo.
 Vše se týká `index.html`, pokud není uvedeno jinak. **Zachováváme jednosouborovou
-architekturu bez build kroku.** Práce probíhá na větvi
-`claude/blissful-fermi-nsr0b5` (PR #2 proti `main`).
+architekturu bez build kroku.** Aktuální práce probíhá na větvi
+`claude/classroom-equipment-status-hzk8dn` (dřívější etapy: `claude/blissful-fermi-nsr0b5`).
 
 ---
 
@@ -36,6 +36,11 @@ architekturu bez build kroku.** Práce probíhá na větvi
 | `recurring/{id}` | `startISO`, `endISO`, `mode` (`weeks`/`until`), `weeks`, `exceptions[]`, `allowElsewhere`, `roomId`, `period`, `teacherId`, `createdBy` | týdenní série |
 | `allowlist/{email}` | (ID dokumentu = e-mail) | **ID je e-mail malými písmeny** (`.toLowerCase()`, ř. ~430) |
 | `meta/migrations` | `dateShiftFixed` (bool), `dateShiftFixedAt` | příznak provedené migrace dat |
+| `techRooms/{id}` | `name`, `floor`, `order` | třídy pro záložku Technika — **samostatný seznam**, nesouvisí s `rooms` |
+| `techItems/{id}` | `name`, `order` | sledované vybavení = sloupce tabulky techniky |
+| `techStatusTypes/{id}` | `label`, `glyph`, `color`, `counts`, `order`, `locked` | konfigurovatelné stavy/ikony; ID výchozích: `ok`, `broken`, `watch`, `reported`, `none` |
+| `techStatus/{roomId}__{itemId}` | `roomId`, `itemId`, `statusId`, `note`, `handled`, `reportedBy`, `reportedByName`, `updatedBy`, `updatedByName`, `updatedAt` | stav jedné položky v jedné třídě; **ID je deterministické** |
+| `meta/techSeed` | `done` (bool), `at` | příznak, že se založila výchozí pětice stavů |
 
 **Datumy** se ukládají jako řetězce `RRRR-MM-DD` v **lokálním (českém) čase**
 (viz 1.1).
@@ -63,6 +68,12 @@ architekturu bez build kroku.** Práce probíhá na větvi
   konstanta `isBootstrapAdmin`) i ve `firestore.rules`. Při změně upravit obě.
 - **Pětidenní týden:** aplikace pracuje jen s Po–Pá (viz 2.9). `selectedDate` je
   vždy pracovní den; utility `isWeekend`/`toWeekday`/`addWeekday`.
+- **Stav techniky (záložka Technika, viz 3.6):** vlastní systém tříd
+  (`techRooms`) oddělený od rozvrhu. Stav buňky bez záznamu = `ok`. Rezervované
+  ID `reported` (`TECH_REPORTED_ID`) používá formulář hlášení a je natvrdo i ve
+  `firestore.rules` — při změně upravit **obě** místa. `counts:true` u stavu =
+  položka se objeví ve shrnutí pod tabulkou; `handled:false` = nové hlášení
+  čekající na admina (odznak u zvonečku).
 
 ---
 
@@ -169,6 +180,33 @@ adminem; `occursOn` rozšířit, aby svátky vyřadil; rules: admin-only zápis.
 - Zobrazit svátek v denním/týdenním náhledu (label „volno") vs. jen skrýt.
 - Zdroj dat: ruční zadání adminem (žádné externí API).
 
+### ✅ 3.6 Stav techniky ve třídách (záložka „Technika")
+**Zadání:** samostatná záložka se stavem techniky po třídách; učitelé hlásí
+závady; třídy i vybavení přidává admin; ikony stavů jsou konfigurovatelné.
+**Řešení:**
+- Nové kolekce `techRooms`, `techItems`, `techStatusTypes`, `techStatus`
+  (viz datový model). Seznam tříd je **záměrně oddělený** od `rooms`.
+- Tabulka třídy × vybavení; na mobilu karty po třídách. Buňka = barevný štítek
+  s ikonou; tečka v rohu znamená, že je k buňce popis.
+- **Hlášení:** klik na stav → *Nahlásit problém* → text → stav `reported`
+  (růžový otazník), `handled:false`. Po dalším kliknutí je popis vidět.
+- **Shrnutí pod tabulkou:** všechny buňky se stavem `counts:true`, nevyřízená
+  hlášení nahoře se štítkem *nové*; admin má u řádku tlačítko *Vyřídit*.
+- **Admin:** zvoneček v horní liště s počtem nevyřízených hlášení; v dialogu
+  buňky *Změnit stav* (libovolný stav + komentář) a *Vyřídit* (zpět na
+  „funkční“). Ruční zásah adminem vždy nastaví `handled:true`.
+- **Stavy/ikony:** výchozí pětice (✓ zelená, ✗ červená, ! žlutá, ? růžová,
+  – modrá) se jednorázově založí při prvním otevření adminem (`meta/techSeed`).
+  Admin přidává vlastní (ikona z nabídky nebo vlastní znak, barva z palety
+  osmi, název, „počítá se mezi problémy"). Stav `reported` je `locked` —
+  nelze smazat, protože ho používá formulář hlášení.
+- **Rules:** `techRooms`/`techItems`/`techStatusTypes` zapisuje jen admin;
+  do `techStatus` smí učitel zapsat jen `statusId=='reported'` a
+  `handled==false`, cokoli jiného jen admin.
+**Ověřeno:** Playwright + in-memory Firebase stub (`scratchpad/e2e.js`) —
+založení tříd/vybavení/vlastního stavu, hlášení závady, odznak u zvonečku,
+zobrazení popisu, změna stavu adminem, vyřízení ze shrnutí, mobilní pohled.
+
 ### ⬜ 3.4 Časy zvonění
 **Cíl:** u hodin (a přestávek) zobrazit časy začátku/konce; konfiguruje admin.
 **Otevřené otázky:**
@@ -210,6 +248,9 @@ admin smazal/změnil rezervaci.
 3. **Bootstrap admin e-mail** — `dgunka@gymnaziumbma.cz` je natvrdo v `index.html`
    i `firestore.rules`; při změně upravit na **obou** místech, jinak admin ztratí
    práva po nasazení rules.
+4. **Stav techniky** — po nasazení se při prvním otevření adminem samy založí
+   výchozí stavy (✓ ✗ ! ? –). Pak v Nastavení přidat třídy a sledované vybavení;
+   dokud nejsou, záložka Technika ukazuje jen prázdný stav.
 
 ## Ověřování
 
