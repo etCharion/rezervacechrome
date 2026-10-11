@@ -813,7 +813,14 @@
         const [allowElsewhere,setAllowElsewhere]=useState(!!editingRecurring?.allowElsewhere && isRoom);
 
         useEffect(()=>{ if(open){ setRepeatOn(!!editingRecurring); setRepeatMode(editingRecurring?.mode || (isAdmin ? 'until' : 'weeks')); setRepeatWeeks(editingRecurring?.weeks||4); setAllowElsewhere(!!editingRecurring?.allowElsewhere && isRoom);} },[open,initial,room,editingRecurring]);
-        useEffect(()=>{ if(open && !initial?.teacherId){ setTeacherId(currentUserId || teachers[0]?.id || ""); } },[open,teachers,currentUserId,initial]);
+        // Dialog zůstává na stránce pořád (jen se skrývá), takže useState výše se
+        // nastaví jen jednou. Učitele a poznámku proto plníme při každém otevření,
+        // jinak by v nich zůstaly hodnoty z minulé rezervace.
+        useEffect(()=>{
+          if(!open) return;
+          setTeacherId(initial?.teacherId || currentUserId || teachers[0]?.id || "");
+          setNote(initial?.note || "");
+        },[open,initial]);
 
         if(!open) return null;
         const editing = !!initial;
