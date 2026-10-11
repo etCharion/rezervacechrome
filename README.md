@@ -125,7 +125,8 @@ Tlačítko v třídní knize EduPage, které takový odkaz otevírá, je ve slo�
 ### Přehled rezervací pro rozšíření
 
 Když je rozšíření nainstalované, aplikace mu (kdykoli je otevřená) posílá
-přehled: kde má přihlášený učitel rezervovaný vozík a která patra jsou na danou
+přehled: kde má přihlášený učitel rezervovaný vozík nebo učebnu (včetně
+opakovaných rezervací do konce školního roku) a která patra jsou na danou
 hodinu plná. Rozšíření podle toho obarví tlačítka v EduPage. Posílá se přímo
 rozšíření s pevným ID (`EXTENSION_ID` v `index.html`, klíč `key`
 v `edupage-extension/manifest.json`); bez rozšíření se nic neděje. Kvůli

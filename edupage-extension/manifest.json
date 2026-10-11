@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "Rezervace BMA – Chromebooky z třídní knihy",
-  "version": "1.1.0",
+  "version": "1.2.0",
   "description": "V třídní knize EduPage přidá u každé hodiny tlačítko, které otevře rezervaci Chromebooků s předvyplněným datem a hodinou.",
   "key": "MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEApr7XFUKR9rZIexKTRrPU0aUh20mBtrCymb7CMd44CJyp8OxVAS5LrcE6eT86yB6Hq5W955urJCSlRS6Z/zbX4wCa7Ytuc+cARUCsnC+xaBF2MeFpEc2E7jH94+nFbmnf3nwNDn7S2naMPM8mLU+45ZpAWud2YQQxb6a5jKDDSPaxpyBq2Q2OGTgwlPSSNHGMfKaO1sBhl0Dbvxt7DSmpiYKnpsi6yF4+W4i6+N2RlHJJnmY3cdJgKSPOkcnGCAERbgJthCFM714b9N2QQcoS7dqVE4mvKuWGdO+ptdVBY/au4tof04YM57oNFAi746n6AZxQsgDTYSAZTVY3WkM5qwIDAQAB",
   "permissions": ["storage"],
