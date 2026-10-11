@@ -9,7 +9,8 @@
 Stav položek: ⬜ čeká · 🔄 rozpracováno · ✅ hotovo · ❌ zamítnuto/odloženo.
 Vše se týká `index.html`, pokud není uvedeno jinak. **Zachováváme jednosouborovou
 architekturu bez build kroku.** Aktuální práce probíhá na větvi
-`claude/classroom-equipment-status-hzk8dn` (dřívější etapy: `claude/blissful-fermi-nsr0b5`).
+`claude/pensive-lovelace-470qiw` (dřívější etapy: `claude/classroom-equipment-status-hzk8dn`,
+`claude/blissful-fermi-nsr0b5`).
 
 ---
 
@@ -233,6 +234,42 @@ vč. vlastního stavu), `e2e2.js` (tři hlášení od dvou učitelů k jedné bu
 vyřizování, historie), `e2e3.js` (ikony bez popisků, legenda, dvě kategorie
 v Nastavení, přepnutí stavu jedním klikem, automatické přepnutí po hlášení
 učitele, rozepsaný text přežije přepnutí stavu, mobilní pohled).
+
+### ✅ 3.7 Rychlá rezervace z EduPage (odkaz + rozšíření do Chromu)
+**Zadání:** v třídní knize EduPage u každé hodiny tlačítko „Chromebooky“, které
+otevře aplikaci s předvyplněným datem, hodinou, patrem a poznámkou.
+**Řešení:**
+- **Oprava předem (4d04327):** `ReservationDialog` je trvale připojený, takže
+  `useState(initial?.note)` se nastavil jen jednou → poznámka (a u admina
+  učitel) zůstávaly z minulého otevření a úprava rezervace je mohla přepsat.
+  Teď se plní v `useEffect` při každém otevření (`[open, initial, defaultNote]`).
+- **Aplikace (8e5d79b):** odkaz `#rezervace?date=…&period=…&floor=…&note=…&popup=1`
+  (formát v README). `parseQuickHash` ověřuje vstup; čte se při startu
+  i při `hashchange`, část za `#` se hned maže (`history.replaceState`), aby
+  šel stejný odkaz otevřít znovu. Okno `QuickDialog` ukáže pomůcky pro hodiny
+  (nahoře z daného patra, `floorNumber` čte číslo z volného textu `floor`)
+  a jejich obsazenost; „Rezervovat“ otevře běžný `ReservationDialog`
+  (nový prop `defaultNote`). Ukládá se přes `upsertReservation`, která teď
+  vrací `true/false` (stejně tak `guard`). Po úspěchu s `popup=1` se okno
+  zavře (`window.close()`).
+- **Souběh:** seznam čeká na `reservationsLoadedFor === quick.date`
+  a `recurringLoaded` (po změně dne by jinak vše chvíli vypadalo volné).
+  Přihlášení je přes popup, takže požadavek v paměti přežije i přihlášení.
+- **Rozšíření (`edupage-extension/`):** Manifest V3 bez oprávnění, jen content
+  script na `https://gymnaziumbma.edupage.org/*`. Tlačítko ke každému
+  `.pd.lesson` (ne k řádku – zvládne i dvě hodiny v jednom řádku); údaje
+  čte až při kliknutí; `MutationObserver` + kontrola max. jednou za 200 ms.
+  Selektory jsou v konstantě `SEL`. Nic nezapisuje, okno `rezervaceBMA`
+  se při dalším kliknutí použije znovu.
+
+**Ověřeno:** Playwright + in-memory Firebase stub: dialog (poznámka/učitel se
+nepřenáší), odkaz (načítání, patra, opakované série, druhý požadavek do
+stejného okna bez znovunačtení, kolize při uložení, den v minulosti, neplatné
+odkazy, nepřihlášený uživatel, HTML v poznámce, zavření okna), rozšíření na
+`test/fixture.html` a **jako skutečné nerozbalené rozšíření v Chromiu**
+(tlačítka, adresa, otevření a znovupoužití okna, rezervace, nabídka EduPage
+dál funguje). **Neověřeno:** skutečné EduPage (dělené skupiny, hodina bez
+učebny, anglická EduPage) – postup zkoušky je v `edupage-extension/README.md`.
 
 ### ⬜ 3.4 Časy zvonění
 **Cíl:** u hodin (a přestávek) zobrazit časy začátku/konce; konfiguruje admin.

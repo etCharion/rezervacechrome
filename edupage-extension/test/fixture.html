@@ -1,0 +1,144 @@
+<!DOCTYPE html>
+<html lang="cs">
+<head>
+  <meta charset="UTF-8">
+  <title>Zkušební třídní kniha (napodobenina EduPage)</title>
+  <!--
+    Zkušební stránka pro rozšíření. Napodobuje strukturu denního přehledu
+    třídní knihy v EduPage (stav k 11. 10. 2026, viz README rozšíření).
+    Otevři ji v Chromu přímo ze souboru – rozšíření se načte značkami dole.
+  -->
+  <link rel="stylesheet" href="../content.css">
+  <style>
+    body { font: 14px/1.4 Arial, sans-serif; margin: 20px; max-width: 760px; color: #222; }
+    .tools { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; margin-bottom: 14px; padding: 10px; background: #fff6d6; border: 1px solid #e6d48a; }
+    .dashboard-header { display: flex; gap: 10px; align-items: center; margin-bottom: 8px; }
+    .dashboard-header .header { font-size: 18px; font-weight: bold; }
+    .dashboard-header .prev, .dashboard-header .next { cursor: pointer; padding: 2px 8px; border: 1px solid #aaa; background: #f4f4f4; }
+    .dashboard-lessons > div:not(.separator) { display: flex; justify-content: space-between; padding: 6px 0; }
+    .separator { border-top: 1px solid #ddd; }
+    .pd { display: flex; gap: 10px; }
+    .pn { width: 18px; font-weight: bold; color: #555; }
+    .pl .link { cursor: pointer; }
+    .pl .link .item { margin-right: 6px; }
+    .pl .small { color: #777; font-size: 12px; }
+    .dd .time { font-size: 12px; color: #777; text-align: right; }
+    #log { background: #f4f4f4; padding: 8px; font: 12px/1.5 monospace; white-space: pre-wrap; min-height: 60px; }
+  </style>
+</head>
+<body>
+  <div class="tools">
+    <strong>Zkouška rozšíření</strong>
+    <label><input type="checkbox" id="realOpen"> opravdu otevírat okno (jinak jen vypsat adresu)</label>
+    <button type="button" id="english">přepnout formát data (anglická EduPage)</button>
+  </div>
+
+  <div class="dashboard-header">
+    <span class="prev">◀</span>
+    <div class="header"><span></span></div>
+    <span class="next">▶</span>
+  </div>
+  <div class="dashboard-lessons"></div>
+
+  <h3>Záznam</h3>
+  <div id="log"></div>
+
+  <script>
+    // ---------- rozvrh zkušební třídní knihy ----------
+    // A = běžná hodina (předmět + třída + učebna), B = seminář (jeden název + učebna)
+    const A = (subject, cls, room) => ({ kind: 'A', subject, cls, room });
+    const B = (name, room) => ({ kind: 'B', name, room });
+    const DAYS = {
+      3: { // středa
+        1: [A('Dějepis', '1. A', '3. Patro - 1. A')],
+        3: [A('Základy společenských věd', '3. B', '2. Patro - 3. B')],
+        4: [B('D. 4. Mat', '0. Patro - IT učebna')],
+        5: [A('Dějepis', '2. C', null)],            // neověřeno: hodina bez učebny
+        7: [A('Anglický jazyk', '1. A sk. 1', '1. Patro - 1. A'),   // neověřeno: dělené skupiny
+            A('Anglický jazyk', '1. A sk. 2', '2. Patro - Jazyková učebna')],
+      },
+      4: { // čtvrtek
+        0: [A('Dějepis', '4. A', '1. Patro - 4. A')],
+        2: [B('Seminář z dějepisu', '3. Patro - Vědecká učebna')],
+        6: [A('Dějepis', '1. A', '3. Patro - 1. A')],
+      },
+    };
+    const OTHER_DAY = { 2: [A('Dějepis', '2. A', '2. Patro - 2. A')] };
+    const TIMES = ['7:10', '8:00', '8:55', '10:00', '10:55', '11:50', '12:45', '13:40', '14:35', '15:25'];
+    const DOW_CZ = ['Ne', 'Po', 'Út', 'St', 'Čt', 'Pá', 'So'];
+    const DOW_EN = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+
+    let current = new Date(2026, 9, 14);   // středa 14. 10. 2026
+    let english = false;
+
+    const log = (msg) => { document.getElementById('log').textContent += msg + '\n'; };
+
+    function lessonHtml(pn, l) {
+      const room = l.room ? `<span class="small"><span class="item classrooms"><span>${l.room}</span></span></span>` : '';
+      const names = l.kind === 'A'
+        ? `<span><span class="item subjects"><span>${l.subject}</span></span></span>
+           <span><span class="item classes"><span>${l.cls}</span></span></span>`
+        : `<span><span class="item">${l.name}</span></span>`;
+      return `<div class="pd lesson">
+          <div class="pn">${pn}</div>
+          <div class="pl">
+            <span class="link">${names}${room}<span class="hover item">▾</span></span>
+            <span class="hover"><img class="icon" alt=""></span>
+          </div>
+        </div>`;
+    }
+    function emptyHtml(pn) {
+      return `<div class="pd"><div class="pn">${pn}</div><div class="pl"><span class="link"><span><span class="text">Přidat hodinu</span></span></span></div></div>`;
+    }
+    function rowHtml(inner, pn) {
+      const time = pn === '' ? '' : `${TIMES[pn]}<br>`;
+      return `<div>${inner}<div class="dd"><div class="time">${time}</div><div class="btns"><div class="as"><div class="link icon students"></div></div></div></div></div>`;
+    }
+
+    // vykreslí den – stejně jako EduPage mění jen obsah, kontejnery zůstávají
+    function render() {
+      const d = current;
+      document.querySelector('.dashboard-header .header > span').textContent = english
+        ? `${DOW_EN[d.getDay()]}, ${d.getMonth() + 1}/${d.getDate()}/${d.getFullYear()}`
+        : `${DOW_CZ[d.getDay()]}, ${d.getDate()}. ${d.getMonth() + 1}. ${d.getFullYear()}`;
+      const plan = DAYS[d.getDay()] || OTHER_DAY;
+      const rows = [];
+      for (let pn = 0; pn <= 9; pn++) {
+        const lessons = plan[pn];
+        if (lessons) lessons.forEach(l => rows.push(rowHtml(lessonHtml(pn, l), pn)));
+        else rows.push(rowHtml(emptyHtml(pn), pn));
+      }
+      rows.push(rowHtml(emptyHtml(''), ''));   // poslední řádek s prázdným číslem
+      document.querySelector('.dashboard-lessons').innerHTML = rows.join('<div class="separator"></div>');
+    }
+
+    function shift(dir) {
+      do { current.setDate(current.getDate() + dir); } while (current.getDay() === 0 || current.getDay() === 6);
+      render();
+    }
+    document.querySelector('.dashboard-header .next').addEventListener('click', () => shift(1));
+    document.querySelector('.dashboard-header .prev').addEventListener('click', () => shift(-1));
+    document.getElementById('english').addEventListener('click', () => { english = !english; render(); });
+
+    // napodobení EduPage: klik na název hodiny otevře nabídku
+    window.__menu = 0;
+    document.querySelector('.dashboard-lessons').addEventListener('click', (e) => {
+      if (e.target.closest('.pl')) { window.__menu++; log('EduPage: otevřela se nabídka hodiny'); }
+    });
+
+    // místo otevření okna jen vypsat adresu (dokud není zaškrtnuté „opravdu otevírat“)
+    window.__opened = [];
+    const realOpen = window.open.bind(window);
+    window.open = function (url, name, features) {
+      window.__opened.push(url);
+      log('Otevřít: ' + decodeURIComponent(url));
+      return document.getElementById('realOpen').checked ? realOpen(url, name, features) : null;
+    };
+
+    render();
+  </script>
+
+  <!-- rozšíření načtené jako obyčejné soubory -->
+  <script src="../content.js"></script>
+</body>
+</html>
