@@ -122,6 +122,16 @@ https://etcharion.github.io/rezervacechrome/#rezervace?date=2026-10-15&period=5&
 Tlačítko v třídní knize EduPage, které takový odkaz otevírá, je ve složce
 [`edupage-extension/`](edupage-extension/README.md).
 
+### Přehled rezervací pro rozšíření
+
+Když je rozšíření nainstalované, aplikace mu (kdykoli je otevřená) posílá
+přehled: kde má přihlášený učitel rezervovaný vozík a která patra jsou na danou
+hodinu plná. Rozšíření podle toho obarví tlačítka v EduPage. Posílá se přímo
+rozšíření s pevným ID (`EXTENSION_ID` v `index.html`, klíč `key`
+v `edupage-extension/manifest.json`); bez rozšíření se nic neděje. Kvůli
+„plným patrům“ aplikace načítá rezervace celé školy na tento a příští týden –
+jen u učitelů s rozšířením. Po odhlášení se přehled v rozšíření smaže.
+
 ## Nasazení
 
 1. Soubor `index.html` stačí vystavit na libovolném statickém hostingu

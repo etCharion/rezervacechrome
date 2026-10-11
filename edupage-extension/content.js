@@ -1,8 +1,14 @@
 // Rezervace BMA – tlačítko „Chromebooky“ v třídní knize EduPage.
 //
 // Co rozšíření dělá: u každé vyučovací hodiny v denním přehledu třídní knihy
-// přidá tlačítko. Po kliknutí přečte ze stránky datum, číslo hodiny, patro
-// a předmět s třídou a otevře s nimi okno rezervační aplikace.
+// přidá malé tlačítko 💻. Po kliknutí přečte ze stránky datum, číslo hodiny,
+// patro a předmět s třídou a otevře s nimi okno rezervační aplikace.
+// Barva tlačítka ukazuje stav podle přehledu, který posílá aplikace
+// (viz background.js):
+//   zelená   – na tuto hodinu máte vozík na stejném patře,
+//   oranžová – máte vozík, ale v jiném patře,
+//   červená  – na tomto patře jsou všechny vozíky obsazené,
+//   modrá    – nic z toho (nebo aplikace zatím nic neposlala).
 //
 // Co nedělá: nic neposílá do EduPage, nemění jeho data ani formuláře, nic
 // neukládá do databáze a nepřihlašuje se. Rezervaci uloží až aplikace,
@@ -30,13 +36,18 @@
   };
 
   const BTN_CLASS = 'bma-rez-btn';
-  const BTN_TEXT = '💻 Chromebooky';
+  const BTN_ICON = '💻';
+  const TITLE_DEFAULT = 'Rezervovat Chromebooky na tuto hodinu';
+  const STATUS_CLASSES = ['bma-rez-mine', 'bma-rez-elsewhere', 'bma-rez-full'];
   const WINDOW_NAME = 'rezervaceBMA';    // stejné jméno = další klik použije stejné okno
   const LOG = '[Rezervace BMA]';
 
   // text prvku bez zbytečných mezer a zalomení
   const clean = (el) => (el ? el.textContent.replace(/\s+/g, ' ').trim() : '');
   const pad2 = (n) => String(n).padStart(2, '0');
+  const floorLabel = (f) => (f === 0 ? 'přízemí' : `${f}. patro`);
+
+  // ---------- čtení údajů ze stránky EduPage ----------
 
   // „Čt, 15. 10. 2026“ → „2026-10-15“; když se datum přečíst nedá, vrátí null
   function readDate() {
@@ -76,12 +87,74 @@
     return '';
   }
 
-  // krátce ukáže chybu přímo na tlačítku a pak vrátí původní text
+  // ---------- přehled rezervací z aplikace (barvy tlačítek) ----------
+
+  // Data ukládá background.js do úložiště rozšíření. Na zkušební stránce
+  // (test/fixture.html, bez rozšíření) úložiště není – tam se berou
+  // z window.bmaTestData.
+  const hasStorage = typeof chrome !== 'undefined' && !!(chrome.storage && chrome.storage.local);
+  let stored = null;
+  const currentData = () => (hasStorage ? stored : window.bmaTestData) || null;
+
+  // jaký stav má tlačítko pro danou hodinu; null = žádný (modrá)
+  function statusFor(date, period, floor) {
+    const data = currentData();
+    if (!data || !date || !period) return null;
+    const key = `${date}|${period}`;
+    const mine = (data.mine && data.mine[key]) || [];
+    const names = (list) => list.map((x) => (x.floor === null ? x.name : `${x.name} (${floorLabel(x.floor)})`)).join(', ');
+    const when = new Date(data.at).toLocaleString('cs-CZ', { day: 'numeric', month: 'numeric', hour: '2-digit', minute: '2-digit' });
+    const age = `\n(podle aplikace otevřené ${when})`;
+
+    // patro hodiny neznáme (hodina bez učebny) → stačí jakýkoli váš vozík
+    const sameFloor = floor === null ? mine : mine.filter((x) => String(x.floor) === floor);
+    if (sameFloor.length) return { cls: 'bma-rez-mine', title: `Máte rezervováno: ${names(sameFloor)}${age}` };
+    if (mine.length) return { cls: 'bma-rez-elsewhere', title: `Máte rezervováno, ale v jiném patře: ${names(mine)}${age}` };
+    const full = (data.full && data.full[key]) || [];
+    if (floor !== null && full.map(String).includes(floor)) {
+      return { cls: 'bma-rez-full', title: `V tomto patře jsou všechny Chromebooky obsazené – kliknutím uvidíte jiná patra.${age}` };
+    }
+    return null;
+  }
+
+  // nastaví barvu a popis tlačítka podle stavu
+  function updateStatus(btn, lessonEl, date) {
+    const s = statusFor(date, readPeriod(lessonEl), readFloor(lessonEl));
+    STATUS_CLASSES.forEach((c) => btn.classList.toggle(c, !!s && s.cls === c));
+    const title = s ? s.title : TITLE_DEFAULT;
+    if (btn.title !== title) {
+      btn.title = title;
+      btn.setAttribute('aria-label', title);
+    }
+  }
+
+  function loadStored() {
+    if (!hasStorage) return;
+    try {
+      chrome.storage.local.get('reservations', (res) => {
+        stored = (res && res.reservations) || null;
+        scan();
+      });
+      // aplikace poslala nová data (např. po rezervaci) → hned přebarvit
+      chrome.storage.onChanged.addListener((changes, area) => {
+        if (area === 'local' && changes.reservations) {
+          stored = changes.reservations.newValue || null;
+          scan();
+        }
+      });
+    } catch (err) {
+      console.warn(LOG, err);
+    }
+  }
+
+  // ---------- tlačítko ----------
+
+  // krátce ukáže chybu přímo na tlačítku a pak vrátí ikonu
   function showError(btn, text) {
     btn.textContent = text;
     btn.classList.add('bma-rez-error');
     setTimeout(() => {
-      btn.textContent = BTN_TEXT;
+      btn.textContent = BTN_ICON;
       btn.classList.remove('bma-rez-error');
     }, 3000);
   }
@@ -114,18 +187,20 @@
     }
   }
 
-  // přidá tlačítko k jedné hodině (pokud tam ještě není)
+  // přidá tlačítko k jedné hodině (pokud tam ještě není) a vrátí ho
   function addButton(lessonEl) {
-    if (lessonEl.querySelector('.' + BTN_CLASS)) return;
-    if (!readPeriod(lessonEl)) return;   // např. poslední řádek „Přidat hodinu“
+    const existing = lessonEl.querySelector('.' + BTN_CLASS);
+    if (existing) return existing;
+    if (!readPeriod(lessonEl)) return null;   // např. poslední řádek „Přidat hodinu“
     const label = lessonEl.querySelector(SEL.label);
-    if (!label) return;
+    if (!label) return null;
 
     const btn = document.createElement('button');
     btn.type = 'button';
     btn.className = BTN_CLASS;
-    btn.textContent = BTN_TEXT;
-    btn.title = 'Rezervovat Chromebooky na tuto hodinu';
+    btn.textContent = BTN_ICON;
+    btn.title = TITLE_DEFAULT;               // popis se ukáže při najetí myší
+    btn.setAttribute('aria-label', TITLE_DEFAULT);
     btn.addEventListener('click', onClick);
     // pro jistotu: kdyby EduPage otevírala nabídku už při stisku tlačítka myši
     btn.addEventListener('mousedown', (e) => e.stopPropagation());
@@ -133,14 +208,21 @@
     const link = label.querySelector(':scope > ' + SEL.link);
     if (link) link.after(btn);   // vpravo od názvu hodiny a učebny
     else label.appendChild(btn);
+    return btn;
   }
 
-  // projde stránku a doplní tlačítka ke všem hodinám s výukou
+  // projde stránku, doplní tlačítka ke všem hodinám s výukou a obarví je
   function scan() {
     try {
+      const date = readDate();
       document.querySelectorAll(SEL.lessons).forEach((list) => {
         list.querySelectorAll(SEL.lesson).forEach((lessonEl) => {
-          try { addButton(lessonEl); } catch (err) { console.warn(LOG, err); }
+          try {
+            const btn = addButton(lessonEl);
+            if (btn) updateStatus(btn, lessonEl, date);
+          } catch (err) {
+            console.warn(LOG, err);
+          }
         });
       });
     } catch (err) {
@@ -159,6 +241,7 @@
     });
     observer.observe(document.body, { childList: true, subtree: true });
     scan();
+    loadStored();
   } catch (err) {
     console.warn(LOG, err);
   }

@@ -1,9 +1,32 @@
 # Rozšíření „Rezervace BMA“ pro EduPage
 
 Rozšíření do Chromu přidá v **třídní knize** EduPage (denní přehled hodin)
-ke každé hodině tlačítko **„💻 Chromebooky“**. Po kliknutí se otevře malé okno
-rezervační aplikace s předvyplněným datem, hodinou, patrem a poznámkou
-(předmět + třída). Stačí vybrat volný vozík a potvrdit.
+ke každé hodině malé tlačítko **💻** (popis se ukáže při najetí myší). Po
+kliknutí se otevře malé okno rezervační aplikace s předvyplněným datem, hodinou,
+patrem a poznámkou (předmět + třída). Stačí vybrat volný vozík a potvrdit.
+
+## Co znamenají barvy
+
+| Barva | Význam |
+|---|---|
+| 🟩 zelená | na tuto hodinu máte rezervovaný vozík na stejném patře, kde učíte |
+| 🟧 oranžová | vozík máte, ale v jiném patře (popis řekne který) – možná omyl |
+| 🟥 červená | v tomto patře jsou všechny vozíky obsazené; kliknutím uvidíte jiná patra |
+| 🟦 modrá | nic z toho – běžné tlačítko pro rezervaci |
+
+Barvy vycházejí z přehledu, který rozšíření **posílá rezervační aplikace,
+kdykoli je v Chromu otevřená** (v kartě nebo v okně z tlačítka). Proto:
+
+- po rezervaci přes tlačítko ikona zezelená hned,
+- rezervace udělaná jinde (na mobilu, na jiném počítači, admin za vás) se
+  projeví, až aplikaci na tomto počítači znovu otevřete,
+- dokud aplikaci po instalaci rozšíření ani jednou neotevřete, jsou všechna
+  tlačítka modrá,
+- popis při najetí myší říká, z kdy přehled je („podle aplikace otevřené …“),
+- červená se počítá jen na **tento a příští týden** (aplikace kvůli ní načítá
+  rezervace celé školy, a to jen tomu, kdo má rozšíření); zelená a oranžová
+  platí do konce školního roku,
+- po odhlášení v aplikaci rozšíření přehled zapomene (sdílený počítač).
 
 ## Co rozšíření dělá a co ne
 
@@ -13,14 +36,22 @@ rezervační aplikace s předvyplněným datem, hodinou, patrem a poznámkou
 - **Nedělá:** nic neposílá do EduPage, nemění jeho data ani formuláře, nic
   neukládá do databáze a nepřihlašuje se. Rezervaci uloží až aplikace, a to
   teprve po potvrzení učitelem – se stejnou kontrolou kolizí jako jinde.
-- Nepotřebuje žádná zvláštní oprávnění. Běží jen na
+- Jediné oprávnění je `storage` – úložiště rozšíření pro přehled rezervací
+  (Chrome kvůli němu nic nehlásí). Tlačítka běží jen na
   `https://gymnaziumbma.edupage.org` (celá doména – odkaz na třídní knihu
   v EduPage nemění adresu, takže se nedá omezit na jednu stránku). Mimo třídní
   knihu nic nedělá.
+- Přehled rezervací přijímá `background.js` **jen od rezervační aplikace**
+  (`externally_connectable` v `manifest.json`) a jde přímo z aplikace do
+  rozšíření – stránka EduPage ho nevidí. Obsahuje jen data, hodiny, názvy
+  a patra vozíků, ne jména kolegů.
+- Položka `key` v `manifest.json` zajistí, že rozšíření má u všech stejné ID
+  (`gbdfghjcpkabcoglgcbaekhfoecjfdne`), podle kterého ho aplikace najde.
+  Není to nic tajného – **neměnit ani nemazat**, jinak barvy přestanou fungovat.
 
 **Bezpečnost:** rozšíření vidí stránky EduPage stejně jako učitel (včetně
 známek a docházky). Proto ho instalujte **jen z tohoto repozitáře**, ne
-z kopie, kterou vám někdo pošle. Kód je krátký – celé je v `content.js`.
+z kopie, kterou vám někdo pošle. Kód je krátký – `content.js` (tlačítka) a `background.js` (příjem přehledu).
 Nerozbalené rozšíření se samo neaktualizuje, takže ho nikdo nezmění na dálku.
 
 ## Instalace (krok za krokem)
@@ -49,15 +80,18 @@ Nerozbalené rozšíření se samo neaktualizuje, takže ho nikdo nezmění na d
 
 ## Zkouška ve skutečném EduPage
 
-1. Otevřete třídní knihu – u hodin s výukou se objeví tlačítko
-   „💻 Chromebooky“. U prázdných hodin („Přidat hodinu“) tlačítko není.
+1. Otevřete třídní knihu – u hodin s výukou se objeví tlačítko 💻, při
+   najetí myší popis. U prázdných hodin („Přidat hodinu“) tlačítko není.
 2. Přepněte den šipkou – tlačítka jsou tam znovu, u každé hodiny jen jedno.
 3. Klikněte na tlačítko – otevře se malé okno se správným datem, hodinou,
    poznámkou a nahoře vozíky ze správného patra.
 4. Klikněte u jiné hodiny – použije se stejné okno (neotevře se další).
 5. Vyberte vozík → **Rezervovat** → v dialogu znovu **Rezervovat**. Okno se
-   za chvíli samo zavře a rezervace je vidět v aplikaci.
-6. Zkontrolujte, že třídní kniha funguje jako dřív: klik na název hodiny
+   za chvíli samo zavře, rezervace je vidět v aplikaci a ikona u hodiny
+   zezelená.
+6. Otevřete aplikaci v jiné kartě a vraťte se do EduPage – hodiny, kde už
+   vozík máte, jsou zelené (případně oranžové), plná patra červená.
+7. Zkontrolujte, že třídní kniha funguje jako dřív: klik na název hodiny
    otevře nabídku EduPage, zápis učiva, docházka a uložení jdou normálně.
 
 Když něco nefunguje, otevřete v EduPage klávesou F12 **Konzoli** a hledejte
@@ -97,8 +131,11 @@ přímo ze složky (dvojklik). Rozšíření se do něj načte samo:
 - šipka ▶ přepne den a tlačítka se objeví znovu, u každé hodiny právě jednou,
 - klik na tlačítko vypíše do „Záznamu“ adresu, která by se otevřela
   (zaškrtnutím „opravdu otevírat okno“ se otevře skutečná aplikace),
-- „přepnout formát data“ napodobí anglickou EduPage – tlačítko má ohlásit chybu.
+- „přepnout formát data“ napodobí anglickou EduPage – tlačítko má ohlásit chybu,
+- „zkušební barvy“ ukáže zelenou, oranžovou a červenou (středa 1., 3. a 7. hodina).
 
 Pro zkoušku s aplikací spuštěnou u sebe (`python3 -m http.server` v kořeni
-repozitáře) dočasně změňte v `content.js` `APP_URL` na
-`http://localhost:8000/`. **Před commitem vraťte zpět.**
+repozitáře) dočasně změňte adresu aplikace na `http://localhost:8000/` na
+**třech** místech: `APP_URL` v `content.js`, `APP_PREFIX` v `background.js`
+a `externally_connectable` v `manifest.json` (tam `http://localhost/*`).
+**Před commitem vraťte zpět.**
