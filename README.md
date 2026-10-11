@@ -19,6 +19,8 @@ a Firebase (Google přihlášení + Firestore).
   učitelé hlásí, co nefunguje (viz níže).
 - **Role a schvalování** — nový účet čeká na schválení adminem; admin může
   e-maily předschválit (allowlist), spravuje učebny, pomůcky a uživatele.
+- **Rychlá rezervace přes odkaz** — odkaz s datem a hodinou otevře přehled
+  volných pomůcek na danou hodinu (používá ho rozšíření pro EduPage, viz níže).
 
 ### Barvy v plánu
 
@@ -91,6 +93,34 @@ Jedno hlášení v poli `reports[]` vypadá takto:
 
 Nová hlášení se přidávají přes `arrayUnion`, takže se dvě souběžná hlášení
 od různých učitelů navzájem nepřepíšou.
+
+## Rychlá rezervace přes odkaz
+
+Aplikace umí převzít datum a hodinu z adresy a rovnou nabídnout volné pomůcky
+(Chromebooky) na danou hodinu. Odkaz vypadá takto:
+
+```
+https://etcharion.github.io/rezervacechrome/#rezervace?date=2026-10-15&period=5&floor=3&note=D%C4%9Bjepis%201.%20A&popup=1
+```
+
+| Parametr | Povinný | Hodnota | Příklad |
+|---|---|---|---|
+| `date` | ano | datum `RRRR-MM-DD`, jen Po–Pá | `2026-10-15` |
+| `period` | ano | vyučovací hodina `0`–`9` | `5` |
+| `floor` | ne | patro `0`–`9` (`0` = přízemí); pomůcky z tohoto patra jsou nahoře | `3` |
+| `note` | ne | předvyplněná poznámka, max. 80 znaků | `Dějepis 1. A` |
+| `popup` | ne | `1` = okno otevřelo rozšíření, po uložení se samo zavře | `1` |
+
+- Údaje jsou za `#`, takže se neposílají na server a v už otevřeném okně se
+  stránka nenačítá znovu (aplikace reaguje na změnu adresy).
+- Odkaz sám nic neuloží. Učitel vybere pomůcku a rezervaci potvrdí v běžném
+  dialogu – platí tedy stejná kontrola kolizí a stejná pravidla jako jinde.
+- Neplatný odkaz (špatné datum, hodina, víkend) jen ukáže chybovou hlášku.
+- Patro pomůcky se čte z pole **Patro** u místnosti: „Přízemí“ = 0, jinak první
+  číslo v textu („3. patro“ = 3).
+
+Tlačítko v třídní knize EduPage, které takový odkaz otevírá, je ve složce
+[`edupage-extension/`](edupage-extension/README.md).
 
 ## Nasazení
 

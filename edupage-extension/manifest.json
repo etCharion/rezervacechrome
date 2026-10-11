@@ -1,0 +1,14 @@
+{
+  "manifest_version": 3,
+  "name": "Rezervace BMA – Chromebooky z třídní knihy",
+  "version": "1.0.0",
+  "description": "V třídní knize EduPage přidá u každé hodiny tlačítko, které otevře rezervaci Chromebooků s předvyplněným datem a hodinou.",
+  "content_scripts": [
+    {
+      "matches": ["https://gymnaziumbma.edupage.org/*"],
+      "js": ["content.js"],
+      "css": ["content.css"],
+      "run_at": "document_idle"
+    }
+  ]
+}

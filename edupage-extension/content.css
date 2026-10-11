@@ -1,0 +1,29 @@
+/* Rezervace BMA – tlačítko v třídní knize EduPage.
+   Jen vlastní třídy s předponou bma-rez-, aby se vzhled EduPage nezměnil. */
+.bma-rez-btn {
+  display: inline-block;
+  margin: 0 0 0 8px;
+  padding: 1px 8px;
+  font: 600 12px/1.6 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  color: #1366b3;
+  background: #eaf2fb;
+  border: 1px solid #b9d3ee;
+  border-radius: 6px;
+  cursor: pointer;
+  vertical-align: middle;
+  white-space: nowrap;
+}
+
+.bma-rez-btn:hover,
+.bma-rez-btn:focus-visible {
+  color: #fff;
+  background: #1366b3;
+  border-color: #1366b3;
+  outline: none;
+}
+
+.bma-rez-btn.bma-rez-error {
+  color: #c0463d;
+  background: #fbeceb;
+  border-color: #f0c9c5;
+}
