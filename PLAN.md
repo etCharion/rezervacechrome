@@ -262,13 +262,30 @@ otevře aplikaci s předvyplněným datem, hodinou, patrem a poznámkou.
   Selektory jsou v konstantě `SEL`. Nic nezapisuje, okno `rezervaceBMA`
   se při dalším kliknutí použije znovu.
 
+- **Barvy tlačítek (v1.1):** tlačítko je jen ikona 💻 s popisem (`title`).
+  Zelená = mám vozík na stejném patře, oranžová = mám vozík v jiném patře,
+  červená = všechny pomůcky v patře obsazené. Data posílá **aplikace**
+  (`sendToExtension` → `chrome.runtime.sendMessage(EXTENSION_ID, …)`) přímo do
+  `background.js` (`onMessageExternal`, jen z `externally_connectable` adresy
+  aplikace), ten je ověří a uloží do `chrome.storage.local`; `content.js` je
+  čte a poslouchá změny. Rozšíření se dál nepřihlašuje a do DB nesahá
+  (rozhodnutí uživatele – varianta „rozšíření čte DB samo“ zamítnuta kvůli
+  ukládání přihlášení). Pevné ID díky `key` v manifestu. Aplikace nejdřív
+  pošle `ping`; jen když rozšíření odpoví, načítá rezervace celé školy na
+  tento a příští týden (`upcomingSingles`, kvůli „plnému patru“ – šetří
+  čtení z DB). `mine` do konce školního roku z `mySingles` + `recurring`
+  (jen `teacherId === uid`). Odhlášení pošle `clear`.
+  Omezení: přehled je čerstvý jen po otevření aplikace na daném počítači.
+
 **Ověřeno:** Playwright + in-memory Firebase stub: dialog (poznámka/učitel se
 nepřenáší), odkaz (načítání, patra, opakované série, druhý požadavek do
 stejného okna bez znovunačtení, kolize při uložení, den v minulosti, neplatné
 odkazy, nepřihlášený uživatel, HTML v poznámce, zavření okna), rozšíření na
 `test/fixture.html` a **jako skutečné nerozbalené rozšíření v Chromiu**
 (tlačítka, adresa, otevření a znovupoužití okna, rezervace, nabídka EduPage
-dál funguje). **Neověřeno:** skutečné EduPage (dělené skupiny, hodina bez
+dál funguje), barvy se skutečným rozšířením (`test-colors`: pevné ID,
+všechny tři barvy vč. opakovaných sérií, okamžité zezelenání po rezervaci,
+odmítnutí poškozených dat, smazání po odhlášení). **Neověřeno:** skutečné EduPage (dělené skupiny, hodina bez
 učebny, anglická EduPage) – postup zkoušky je v `edupage-extension/README.md`.
 
 ### ⬜ 3.4 Časy zvonění

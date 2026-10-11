@@ -31,6 +31,7 @@
     <strong>Zkouška rozšíření</strong>
     <label><input type="checkbox" id="realOpen"> opravdu otevírat okno (jinak jen vypsat adresu)</label>
     <button type="button" id="english">přepnout formát data (anglická EduPage)</button>
+    <button type="button" id="colors">zkušební barvy (zap/vyp)</button>
   </div>
 
   <div class="dashboard-header">
@@ -119,6 +120,27 @@
     document.querySelector('.dashboard-header .next').addEventListener('click', () => shift(1));
     document.querySelector('.dashboard-header .prev').addEventListener('click', () => shift(-1));
     document.getElementById('english').addEventListener('click', () => { english = !english; render(); });
+
+    // Zkušební „přehled z aplikace“ – ve skutečnosti ho posílá aplikace přes
+    // background.js. St 14. 10.: 1. hod. zelená, 3. hod. oranžová, 7. hod.
+    // (1. patro) červená; Čt 15. 10.: 0. hod. zelená, 2. hod. červená.
+    const TEST_DATA = {
+      at: new Date(2026, 9, 11, 14, 32).getTime(),
+      mine: {
+        '2026-10-14|1': [{ name: 'Vozík 3.1', floor: 3 }],
+        '2026-10-14|3': [{ name: 'Vozík 1', floor: 1 }],
+        '2026-10-15|0': [{ name: 'Vozík 1', floor: 1 }],
+      },
+      full: {
+        '2026-10-14|7': [1],
+        '2026-10-15|2': [3],
+      },
+    };
+    document.getElementById('colors').addEventListener('click', () => {
+      window.bmaTestData = window.bmaTestData ? null : TEST_DATA;
+      log(window.bmaTestData ? 'Zkušební barvy zapnuté' : 'Zkušební barvy vypnuté');
+      render();
+    });
 
     // napodobení EduPage: klik na název hodiny otevře nabídku
     window.__menu = 0;

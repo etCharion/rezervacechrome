@@ -627,6 +627,22 @@
         return { date, period, floor, note, popup: p.get('popup') === '1' };
       }
 
+      // ---------- spojení s rozšířením pro EduPage ----------
+      // Aplikace posílá rozšíření přehled rezervací, aby v třídní knize obarvilo
+      // tlačítka (zelená = mám vozík, oranžová = mám vozík v jiném patře,
+      // červená = patro je plné). ID rozšíření je pevné díky klíči „key“
+      // v edupage-extension/manifest.json.
+      const EXTENSION_ID = 'gbdfghjcpkabcoglgcbaekhfoecjfdne';
+      // Když rozšíření nainstalované není, prohlížeč stránce chrome.runtime
+      // vůbec nedá (nebo zpráva skončí chybou) – pak se nic nestane.
+      function sendToExtension(msg, onReply){
+        try{
+          const rt = window.chrome && window.chrome.runtime;
+          if(!rt || !rt.sendMessage) return;
+          rt.sendMessage(EXTENSION_ID, msg, (reply)=>{ void rt.lastError; if(onReply) onReply(reply); });
+        }catch(err){ /* rozšíření není – nevadí */ }
+      }
+
       // jména učitelů
       const stripTitle = (s)=> (s||'').replace(/^(Mgr\.|Ing\.|RNDr\.|Bc\.|MgA\.|PhDr\.|PaedDr\.|doc\.|prof\.|Dr\.)\s*/i,'').trim();
       const shortName = (s)=>{ const n = stripTitle(s); const parts = n.split(' ').filter(Boolean); return parts.length>1 ? `${parts[0][0]}. ${parts.slice(1).join(' ')}` : (n || '—'); };
@@ -2267,6 +2283,86 @@
           }
         };
 
+        // ---------- přehled pro rozšíření do EduPage (barvy tlačítek) ----------
+        const [extReady,setExtReady]=useState(false);           // je rozšíření nainstalované?
+        const [mySinglesLoaded,setMySinglesLoaded]=useState(false);
+        const [upcomingSingles,setUpcomingSingles]=useState(null);
+        useEffect(()=>{
+          sendToExtension({ type:'ping' }, (reply)=>{ if(reply && reply.ok) setExtReady(true); });
+        },[]);
+
+        // Kvůli „plnému patru“ potřebujeme rezervace všech učitelů na nejbližší
+        // dva týdny. Načítají se jen tomu, kdo má rozšíření (šetří čtení z databáze).
+        const extFullUntilIso = toISO(addDays(startOfWeek(new Date()), 11));   // pátek příštího týdne
+        useEffect(()=>{
+          if(!extReady || !authUser || !me || waitingApproval) return;
+          const unsub = db.collection('reservations')
+            .where('dateISO','>=',toISO(new Date()))
+            .where('dateISO','<=',extFullUntilIso)
+            .onSnapshot(q=>{ setUpcomingSingles(q.docs.map(d=>d.data())); });
+          return ()=>unsub&&unsub();
+        },[extReady, !!authUser, !!me, waitingApproval, extFullUntilIso]);
+
+        // data rozšíření posíláme při každé změně (např. hned po nové rezervaci)
+        useEffect(()=>{
+          if(!extReady || !authUser || waitingApproval || !roomsLoaded || !recurringLoaded
+             || !mySinglesLoaded || !upcomingSingles) return;
+          sendToExtension({ type:'reservations', at: Date.now(), fullUntil: extFullUntilIso,
+                            ...buildExtensionData(authUser.uid) });
+        },[extReady, authUser?.uid, waitingApproval, roomsLoaded, recurringLoaded, mySinglesLoaded,
+           rooms, recurring, mySingles, upcomingSingles, extFullUntilIso]);
+
+        // Spočítá přehled pro rozšíření. Klíč je „datum|hodina“ (např. „2026-10-15|5“).
+        //   mine – moje rezervace pomůcek: [{ name, floor }] (do konce školního roku)
+        //   full – patra, kde jsou na tu hodinu obsazené všechny pomůcky (jen dva týdny)
+        function buildExtensionData(uid){
+          const equip = rooms.filter(r=> r.type==='equipment' && ['hours','both'].includes(r.usage || 'hours'));
+          const equipById = new Map(equip.map(r=>[r.id, r]));
+          const today = toISO(new Date());
+          const mineUntil = schoolYearEndISO(new Date());
+          const inRange = (iso, until)=> cmpISO(iso, today) >= 0 && cmpISO(iso, until) <= 0;
+          // dny, kdy opakovaná rezervace opravdu nastane (mezi dneškem a `until`)
+          const weeklyDates = (rec, until)=>{
+            const out = [];
+            const late = diffDays(today, rec.startISO);   // kolik dní série už běží
+            let d = addDays(parseISO(rec.startISO), late > 0 ? Math.ceil(late/7)*7 : 0);
+            for(let iso = toISO(d); cmpISO(iso, until) <= 0; d = addDays(d, 7), iso = toISO(d)){
+              if(occursOn(iso, rec)) out.push(iso);
+            }
+            return out;
+          };
+
+          // 1) kde mám vozík já
+          const mine = {};
+          const addMine = (iso, period, roomId)=>{
+            const room = equipById.get(roomId);
+            if(!room || !isHourPeriod(period)) return;
+            (mine[`${iso}|${period}`] ||= []).push({ name: room.name, floor: floorNumber(room.floor) });
+          };
+          mySingles.forEach(s=>{ if(s.teacherId===uid && inRange(s.dateISO, mineUntil)) addMine(s.dateISO, s.period, s.roomId); });
+          recurring.forEach(r=>{ if(r.teacherId===uid && equipById.has(r.roomId)) weeklyDates(r, mineUntil).forEach(iso=> addMine(iso, r.period, r.roomId)); });
+
+          // 2) co je obsazené (všichni učitelé) a která patra jsou tím plná
+          const taken = {};
+          const mark = (iso, period, roomId)=>{
+            if(!equipById.has(roomId) || !isHourPeriod(period)) return;
+            (taken[`${iso}|${period}`] ||= new Set()).add(roomId);
+          };
+          upcomingSingles.forEach(s=>{ if(inRange(s.dateISO, extFullUntilIso)) mark(s.dateISO, s.period, s.roomId); });
+          recurring.forEach(r=>{ if(equipById.has(r.roomId)) weeklyDates(r, extFullUntilIso).forEach(iso=> mark(iso, r.period, r.roomId)); });
+          const byFloor = {};
+          equip.forEach(r=>{ const f = floorNumber(r.floor); if(f !== null) (byFloor[f] ||= []).push(r.id); });
+          const full = {};
+          Object.entries(taken).forEach(([key, set])=>{
+            const floors = Object.keys(byFloor).filter(f=> byFloor[f].every(id=> set.has(id))).map(Number);
+            if(floors.length) full[key] = floors;
+          });
+          return { mine, full };
+        }
+
+        // odhlášení: rozšíření zapomene přehled rezervací (sdílený počítač)
+        const signOut = ()=>{ sendToExtension({ type:'clear' }); auth.signOut(); };
+
         // ---------- moje seznamy ----------
         useEffect(()=>{
           if(!authUser || !me || waitingApproval) return;
@@ -2287,10 +2383,12 @@
             db.collection('reservations').where('createdBy','==',uid).onSnapshot(q=>{
               singleStore.created = q.docs.map(d=>({id:d.id, ...d.data()}));
               mergeAndSet(singleStore, setMySingles, 'dateISO');
+              if(singleStore.forMe) setMySinglesLoaded(true);
             }),
             db.collection('reservations').where('teacherId','==',uid).onSnapshot(q=>{
               singleStore.forMe = q.docs.map(d=>({id:d.id, ...d.data()}));
               mergeAndSet(singleStore, setMySingles, 'dateISO');
+              if(singleStore.created) setMySinglesLoaded(true);
             }),
             db.collection('recurring').where('createdBy','==',uid).onSnapshot(q=>{
               recStore.created = q.docs.map(d=>({id:d.id, ...d.data()}));
@@ -2388,7 +2486,7 @@
                 <h1 style={{fontSize:'20px',fontWeight:700,margin:'0 0 8px'}}>Účet čeká na schválení</h1>
                 <p style={{color:'var(--text-muted)',fontSize:'14px',margin:'0 0 6px'}}>Tento účet zatím není schválený administrátorem.</p>
                 <div style={{fontSize:'13px',color:'var(--text-faint)',marginBottom:'18px'}}>Přihlášen: {authUser.email}</div>
-                <button className="btn" onClick={()=>auth.signOut()}>Odhlásit</button>
+                <button className="btn" onClick={signOut}>Odhlásit</button>
               </div>
             </div>
           );
@@ -2448,7 +2546,7 @@
                   <div className="un">{stripTitle(me.displayName||me.email)}</div>
                   <div className="ur">{isAdmin?'Administrátor':'Učitel'}</div>
                 </div>
-                <button className="btn icon ghost" title="Odhlásit" onClick={()=>auth.signOut()}><IconLogout size={16}/></button>
+                <button className="btn icon ghost" title="Odhlásit" onClick={signOut}><IconLogout size={16}/></button>
               </div>
             </header>
 

@@ -3,8 +3,8 @@
 .bma-rez-btn {
   display: inline-block;
   margin: 0 0 0 8px;
-  padding: 1px 8px;
-  font: 600 12px/1.6 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  padding: 0 6px;
+  font: 600 13px/1.6 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
   color: #1366b3;
   background: #eaf2fb;
   border: 1px solid #b9d3ee;
@@ -16,12 +16,45 @@
 
 .bma-rez-btn:hover,
 .bma-rez-btn:focus-visible {
-  color: #fff;
-  background: #1366b3;
+  background: #cfe2f5;
   border-color: #1366b3;
   outline: none;
 }
 
+/* zelená – na tuto hodinu máte vozík na stejném patře */
+.bma-rez-btn.bma-rez-mine {
+  background: #b5e5c9;
+  border-color: #2f9e6f;
+}
+.bma-rez-btn.bma-rez-mine:hover,
+.bma-rez-btn.bma-rez-mine:focus-visible {
+  background: #8fd6ad;
+  border-color: #1f7a55;
+}
+
+/* oranžová – máte vozík, ale v jiném patře */
+.bma-rez-btn.bma-rez-elsewhere {
+  background: #fccc9f;
+  border-color: #d9822b;
+}
+.bma-rez-btn.bma-rez-elsewhere:hover,
+.bma-rez-btn.bma-rez-elsewhere:focus-visible {
+  background: #f9b377;
+  border-color: #b5631a;
+}
+
+/* červená – v tomto patře jsou všechny vozíky obsazené */
+.bma-rez-btn.bma-rez-full {
+  background: #f5b3ab;
+  border-color: #c0463d;
+}
+.bma-rez-btn.bma-rez-full:hover,
+.bma-rez-btn.bma-rez-full:focus-visible {
+  background: #ee968b;
+  border-color: #9e342c;
+}
+
+/* chyba (např. nečitelné datum) – na chvíli místo ikony text */
 .bma-rez-btn.bma-rez-error {
   color: #c0463d;
   background: #fbeceb;
