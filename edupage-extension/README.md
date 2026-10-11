@@ -9,7 +9,7 @@ patrem a poznámkou (předmět + třída). Stačí vybrat volný vozík a potvrd
 
 | Barva | Význam |
 |---|---|
-| 🟩 zelená | na tuto hodinu máte rezervovaný vozík na stejném patře, kde učíte |
+| 🟩 zelená | na tuto hodinu máte rezervovaný vozík na stejném patře, kde učíte, nebo učebnu (např. IT učebnu) – u učebny je místo 💻 ikona 🚪 |
 | 🟧 oranžová | vozík máte, ale v jiném patře (popis řekne který) – možná omyl |
 | 🟥 červená | v tomto patře jsou všechny vozíky obsazené; kliknutím uvidíte jiná patra |
 | 🟦 modrá | nic z toho – běžné tlačítko pro rezervaci |
@@ -132,7 +132,7 @@ přímo ze složky (dvojklik). Rozšíření se do něj načte samo:
 - klik na tlačítko vypíše do „Záznamu“ adresu, která by se otevřela
   (zaškrtnutím „opravdu otevírat okno“ se otevře skutečná aplikace),
 - „přepnout formát data“ napodobí anglickou EduPage – tlačítko má ohlásit chybu,
-- „zkušební barvy“ ukáže zelenou, oranžovou a červenou (středa 1., 3. a 7. hodina).
+- „zkušební barvy“ ukáže zelenou, oranžovou, učebnu 🚪 a červenou (středa 1., 3., 4. a 7. hodina).
 
 Pro zkoušku s aplikací spuštěnou u sebe (`python3 -m http.server` v kořeni
 repozitáře) dočasně změňte adresu aplikace na `http://localhost:8000/` na

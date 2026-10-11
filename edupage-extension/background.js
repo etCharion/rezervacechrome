@@ -1,7 +1,8 @@
 // Rezervace BMA – „přijímač“ dat z rezervační aplikace.
 //
 // Když je rezervační aplikace v Chromu otevřená, pošle sem přehled:
-//   mine – kde máte vy rezervovaný vozík (datum, hodina, název, patro),
+//   mine – kde máte vy rezervovaný vozík nebo učebnu (datum, hodina, název,
+//          patro, room = jde o učebnu),
 //   full – ve kterých patrech jsou na danou hodinu všechny vozíky obsazené.
 // Tady se jen zkontroluje a uloží do úložiště rozšíření. Tlačítka v EduPage
 // (content.js) si ho přečtou a obarví se. Nic jiného se tu neděje – rozšíření
@@ -28,6 +29,7 @@ function sanitize(msg) {
     mine[key] = list.slice(0, 20).map((x) => ({
       name: String((x && x.name) || '').slice(0, 60),
       floor: x && isFloor(x.floor) ? x.floor : null,
+      room: !!(x && x.room),
     }));
   }
   for (const [key, floors] of Object.entries(msg.full || {})) {

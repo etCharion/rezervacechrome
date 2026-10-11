@@ -276,6 +276,11 @@ otevře aplikaci s předvyplněným datem, hodinou, patrem a poznámkou.
   čtení z DB). `mine` do konce školního roku z `mySingles` + `recurring`
   (jen `teacherId === uid`). Odhlášení pošle `clear`.
   Omezení: přehled je čerstvý jen po otevření aplikace na daném počítači.
+- **v1.2:** do `mine` se počítají i moje rezervace **učeben** (příznak
+  `room: true`), vč. celoročních sérií. Učebna = zelená bez ohledu na patro
+  (třída jde do ní) a ikona 🚪 místo 💻, pokud není zároveň vozík na stejném
+  patře. Červená (`full`) dál jen z vozíků. Ověřeno `test-until`
+  (celoroční vozík/učebna, cizí učebna, ikony, stránka se po obarvení uklidní).
 
 **Ověřeno:** Playwright + in-memory Firebase stub: dialog (poznámka/učitel se
 nepřenáší), odkaz (načítání, patra, opakované série, druhý požadavek do

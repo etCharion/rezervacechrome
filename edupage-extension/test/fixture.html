@@ -122,13 +122,15 @@
     document.getElementById('english').addEventListener('click', () => { english = !english; render(); });
 
     // Zkušební „přehled z aplikace“ – ve skutečnosti ho posílá aplikace přes
-    // background.js. St 14. 10.: 1. hod. zelená, 3. hod. oranžová, 7. hod.
-    // (1. patro) červená; Čt 15. 10.: 0. hod. zelená, 2. hod. červená.
+    // background.js. St 14. 10.: 1. hod. zelená (vozík), 3. hod. oranžová,
+    // 4. hod. zelená (celoroční IT učebna), 7. hod. (1. patro) červená;
+    // Čt 15. 10.: 0. hod. zelená, 2. hod. červená.
     const TEST_DATA = {
       at: new Date(2026, 9, 11, 14, 32).getTime(),
       mine: {
         '2026-10-14|1': [{ name: 'Vozík 3.1', floor: 3 }],
         '2026-10-14|3': [{ name: 'Vozík 1', floor: 1 }],
+        '2026-10-14|4': [{ name: 'IT učebna', floor: 0, room: true }],
         '2026-10-15|0': [{ name: 'Vozík 1', floor: 1 }],
       },
       full: {

@@ -5,7 +5,9 @@
 // patro a předmět s třídou a otevře s nimi okno rezervační aplikace.
 // Barva tlačítka ukazuje stav podle přehledu, který posílá aplikace
 // (viz background.js):
-//   zelená   – na tuto hodinu máte vozík na stejném patře,
+//   zelená   – na tuto hodinu máte vozík na stejném patře nebo učebnu
+//              (např. IT učebnu – třída jde tam, na patře nezáleží);
+//              když je to jen učebna, ikona je 🚪 místo 💻,
 //   oranžová – máte vozík, ale v jiném patře,
 //   červená  – na tomto patře jsou všechny vozíky obsazené,
 //   modrá    – nic z toho (nebo aplikace zatím nic neposlala).
@@ -37,6 +39,7 @@
 
   const BTN_CLASS = 'bma-rez-btn';
   const BTN_ICON = '💻';
+  const ROOM_ICON = '🚪';                // zelená kvůli rezervované učebně (ne vozíku)
   const TITLE_DEFAULT = 'Rezervovat Chromebooky na tuto hodinu';
   const STATUS_CLASSES = ['bma-rez-mine', 'bma-rez-elsewhere', 'bma-rez-full'];
   const WINDOW_NAME = 'rezervaceBMA';    // stejné jméno = další klik použije stejné okno
@@ -106,10 +109,20 @@
     const when = new Date(data.at).toLocaleString('cs-CZ', { day: 'numeric', month: 'numeric', hour: '2-digit', minute: '2-digit' });
     const age = `\n(podle aplikace otevřené ${when})`;
 
-    // patro hodiny neznáme (hodina bez učebny) → stačí jakýkoli váš vozík
-    const sameFloor = floor === null ? mine : mine.filter((x) => String(x.floor) === floor);
-    if (sameFloor.length) return { cls: 'bma-rez-mine', title: `Máte rezervováno: ${names(sameFloor)}${age}` };
-    if (mine.length) return { cls: 'bma-rez-elsewhere', title: `Máte rezervováno, ale v jiném patře: ${names(mine)}${age}` };
+    // rezervovaná učebna platí vždy (třída jde do ní); u vozíku záleží na patře,
+    // a když patro hodiny neznáme (hodina bez učebny), stačí jakýkoli vozík
+    const rooms = mine.filter((x) => x.room);
+    const carts = mine.filter((x) => !x.room);
+    const sameFloor = floor === null ? carts : carts.filter((x) => String(x.floor) === floor);
+    const ok = sameFloor.concat(rooms);
+    if (ok.length) {
+      return {
+        cls: 'bma-rez-mine',
+        icon: sameFloor.length ? BTN_ICON : ROOM_ICON,   // jen učebna → dveře
+        title: `Máte rezervováno: ${names(ok)}${age}`,
+      };
+    }
+    if (carts.length) return { cls: 'bma-rez-elsewhere', title: `Máte rezervováno, ale v jiném patře: ${names(carts)}${age}` };
     const full = (data.full && data.full[key]) || [];
     if (floor !== null && full.map(String).includes(floor)) {
       return { cls: 'bma-rez-full', title: `V tomto patře jsou všechny Chromebooky obsazené – kliknutím uvidíte jiná patra.${age}` };
@@ -117,10 +130,13 @@
     return null;
   }
 
-  // nastaví barvu a popis tlačítka podle stavu
+  // nastaví barvu, ikonu a popis tlačítka podle stavu
   function updateStatus(btn, lessonEl, date) {
     const s = statusFor(date, readPeriod(lessonEl), readFloor(lessonEl));
     STATUS_CLASSES.forEach((c) => btn.classList.toggle(c, !!s && s.cls === c));
+    const icon = (s && s.icon) || BTN_ICON;
+    // ikonu měníme jen když se liší a tlačítko zrovna neukazuje chybu
+    if (!btn.classList.contains('bma-rez-error') && btn.textContent !== icon) btn.textContent = icon;
     const title = s ? s.title : TITLE_DEFAULT;
     if (btn.title !== title) {
       btn.title = title;

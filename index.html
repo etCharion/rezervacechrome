@@ -629,8 +629,8 @@
 
       // ---------- spojení s rozšířením pro EduPage ----------
       // Aplikace posílá rozšíření přehled rezervací, aby v třídní knize obarvilo
-      // tlačítka (zelená = mám vozík, oranžová = mám vozík v jiném patře,
-      // červená = patro je plné). ID rozšíření je pevné díky klíči „key“
+      // tlačítka (zelená = mám vozík nebo učebnu, oranžová = mám vozík v jiném
+      // patře, červená = patro je plné). ID rozšíření je pevné díky klíči „key“
       // v edupage-extension/manifest.json.
       const EXTENSION_ID = 'gbdfghjcpkabcoglgcbaekhfoecjfdne';
       // Když rozšíření nainstalované není, prohlížeč stránce chrome.runtime
@@ -2313,11 +2313,14 @@
            rooms, recurring, mySingles, upcomingSingles, extFullUntilIso]);
 
         // Spočítá přehled pro rozšíření. Klíč je „datum|hodina“ (např. „2026-10-15|5“).
-        //   mine – moje rezervace pomůcek: [{ name, floor }] (do konce školního roku)
+        //   mine – moje rezervace pomůcek i učeben: [{ name, floor, room }] (do konce
+        //          školního roku, vč. opakovaných); room = true u učebny (IT učebna…)
         //   full – patra, kde jsou na tu hodinu obsazené všechny pomůcky (jen dva týdny)
         function buildExtensionData(uid){
-          const equip = rooms.filter(r=> r.type==='equipment' && ['hours','both'].includes(r.usage || 'hours'));
+          const forHours = rooms.filter(r=> ['hours','both'].includes(r.usage || 'hours'));
+          const equip = forHours.filter(r=> r.type==='equipment');
           const equipById = new Map(equip.map(r=>[r.id, r]));
+          const mineById = new Map(forHours.map(r=>[r.id, r]));   // pomůcky i učebny
           const today = toISO(new Date());
           const mineUntil = schoolYearEndISO(new Date());
           const inRange = (iso, until)=> cmpISO(iso, today) >= 0 && cmpISO(iso, until) <= 0;
@@ -2332,15 +2335,15 @@
             return out;
           };
 
-          // 1) kde mám vozík já
+          // 1) kde mám rezervovaný vozík nebo učebnu já
           const mine = {};
           const addMine = (iso, period, roomId)=>{
-            const room = equipById.get(roomId);
+            const room = mineById.get(roomId);
             if(!room || !isHourPeriod(period)) return;
-            (mine[`${iso}|${period}`] ||= []).push({ name: room.name, floor: floorNumber(room.floor) });
+            (mine[`${iso}|${period}`] ||= []).push({ name: room.name, floor: floorNumber(room.floor), room: room.type !== 'equipment' });
           };
           mySingles.forEach(s=>{ if(s.teacherId===uid && inRange(s.dateISO, mineUntil)) addMine(s.dateISO, s.period, s.roomId); });
-          recurring.forEach(r=>{ if(r.teacherId===uid && equipById.has(r.roomId)) weeklyDates(r, mineUntil).forEach(iso=> addMine(iso, r.period, r.roomId)); });
+          recurring.forEach(r=>{ if(r.teacherId===uid && mineById.has(r.roomId)) weeklyDates(r, mineUntil).forEach(iso=> addMine(iso, r.period, r.roomId)); });
 
           // 2) co je obsazené (všichni učitelé) a která patra jsou tím plná
           const taken = {};
