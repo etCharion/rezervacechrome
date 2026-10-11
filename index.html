@@ -498,6 +498,15 @@
       .auth-wrap { min-height: 100vh; display: grid; place-items: center; padding: 24px; background: var(--bg); }
       .auth-card { background: var(--surface); border: 1px solid var(--border); border-radius: var(--r-xl); box-shadow: var(--sh-md); padding: 30px; max-width: 400px; width: 100%; }
 
+      /* rychlá rezervace přes odkaz (z rozšíření pro EduPage) */
+      .quick-note { font-size: 13px; font-weight: 600; color: var(--text-muted); margin-top: 6px; }
+      .quick-group { font-size: 11.5px; font-weight: 700; letter-spacing: .04em; text-transform: uppercase; color: var(--text-faint); margin-bottom: -6px; }
+      .quick-list { display: flex; flex-direction: column; gap: 7px; }
+      .quick-row { display: flex; align-items: center; gap: 11px; padding: 9px 11px; border: 1px solid var(--border); border-radius: var(--r-md); background: var(--surface); }
+      .quick-row.busy { background: var(--surface-2); }
+      .quick-row .room-meta { flex: 1; }
+      .quick-row .qr-busy { font-size: 12px; color: var(--text-muted); margin-top: 2px; }
+
       /* ---- responsive: ≤860px = mobil ---- */
       @media (min-width: 861px) { .show-mobile { display: none !important; } }
       @media (max-width: 860px) {
@@ -584,6 +593,39 @@
         const b = BREAKS.find(x=>x.id===p);
         return b ? b.label : String(p);
       };
+
+      // ---------- rychlá rezervace přes odkaz ----------
+      // Pole `floor` u místností je volný text („Přízemí“, „1. patro“, „2. Patro“…).
+      // Vrátí číslo patra (0 = přízemí), nebo null, když se z textu poznat nedá.
+      const floorNumber = (text)=>{
+        const s = String(text || '');
+        if(/přízem/i.test(s)) return 0;
+        const m = s.match(/\d+/);
+        return m ? Number(m[0]) : null;
+      };
+      const floorLabel = (n)=> n === 0 ? 'přízemí' : `${n}. patro`;
+
+      // Odkaz z rozšíření pro EduPage (formát je popsaný v README):
+      //   …/#rezervace?date=2026-10-15&period=5&floor=3&note=D%C4%9Bjepis%201.%20A&popup=1
+      // Adresu může kdokoli podvrhnout, proto se každý údaj ověřuje.
+      // Vrací null (odkaz to není), { error } nebo { date, period, floor, note, popup }.
+      const QUICK_PREFIX = '#rezervace?';
+      function parseQuickHash(hash){
+        if(!hash || !hash.startsWith(QUICK_PREFIX)) return null;
+        const p = new URLSearchParams(hash.slice(QUICK_PREFIX.length));
+        const date = p.get('date') || '';
+        const period = p.get('period') || '';
+        // datum musí mít tvar RRRR-MM-DD a opravdu existovat (např. 31. 2. neexistuje)
+        if(!/^\d{4}-\d{2}-\d{2}$/.test(date) || toISO(parseISO(date)) !== date){
+          return { error: 'Odkaz na rezervaci má neplatné datum.' };
+        }
+        if(!HOURS_PERIODS.includes(period)) return { error: 'Odkaz na rezervaci má neplatnou vyučovací hodinu.' };
+        if(isWeekend(parseISO(date))) return { error: 'Na víkend rezervovat nelze.' };
+        const floorText = p.get('floor');
+        const floor = (floorText !== null && /^\d$/.test(floorText)) ? Number(floorText) : null;
+        const note = (p.get('note') || '').trim().slice(0, 80);
+        return { date, period, floor, note, popup: p.get('popup') === '1' };
+      }
 
       // jména učitelů
       const stripTitle = (s)=> (s||'').replace(/^(Mgr\.|Ing\.|RNDr\.|Bc\.|MgA\.|PhDr\.|PaedDr\.|doc\.|prof\.|Dr\.)\s*/i,'').trim();
@@ -803,7 +845,7 @@
         );
       }
 
-      function ReservationDialog({open,onClose,onSave,onDelete,onSkip,teachers,initial,room,dateIso,period,editingRecurring,isAdmin,currentUserId}){
+      function ReservationDialog({open,onClose,onSave,onDelete,onSkip,teachers,initial,room,dateIso,period,editingRecurring,isAdmin,currentUserId,defaultNote}){
         const isRoom = room?.type==="room";
         const [teacherId,setTeacherId]=useState(initial?.teacherId || (currentUserId || ""));
         const [note,setNote]=useState(initial?.note||"");
@@ -816,11 +858,13 @@
         // Dialog zůstává na stránce pořád (jen se skrývá), takže useState výše se
         // nastaví jen jednou. Učitele a poznámku proto plníme při každém otevření,
         // jinak by v nich zůstaly hodnoty z minulé rezervace.
+        // `defaultNote` (předvyplnění z odkazu) platí jen pro novou rezervaci –
+        // přítomnost `initial` znamená úpravu existující.
         useEffect(()=>{
           if(!open) return;
           setTeacherId(initial?.teacherId || currentUserId || teachers[0]?.id || "");
-          setNote(initial?.note || "");
-        },[open,initial]);
+          setNote(initial ? (initial.note || "") : (defaultNote || ""));
+        },[open,initial,defaultNote]);
 
         if(!open) return null;
         const editing = !!initial;
@@ -924,6 +968,67 @@
                     onSave({ teacherId, note, repeat: repeatOn ? { mode: repeatMode, weeks: repeatWeeks || undefined, allowElsewhere: isRoom ? allowElsewhere : undefined } : null });
                     onClose();
                   }}>{editing?'Uložit změny':'Rezervovat'}</button>
+              </div>
+            </div>
+          </div>
+        );
+      }
+
+      // Okno „Rychlá rezervace“ – otevře se z odkazu #rezervace?… (rozšíření pro EduPage).
+      // Ukáže pomůcky pro hodiny a jestli jsou v danou hodinu volné. Samo nic neukládá:
+      // „Rezervovat“ otevře běžný dialog rezervace (onPick).
+      function QuickDialog({ req, rooms, planFor, tName, loaded, currentUserId, onPick, onClose }){
+        const equipment = rooms.filter(r=> r.type==='equipment' && ['hours','both'].includes(r.usage || 'hours'));
+        const onFloor = req.floor === null ? [] : equipment.filter(r=> floorNumber(r.floor) === req.floor);
+        const split = onFloor.length > 0;   // dělit na „toto patro“ a „jiná patra“ jen když na patře něco je
+        const others = split ? equipment.filter(r=> !onFloor.includes(r)) : equipment;
+
+        const row = (room)=>{
+          const cell = planFor(room.id, req.period);
+          const mine = !!cell && cell.teacherId === currentUserId;
+          return (
+            <div key={room.id} className={`quick-row ${cell?'busy':''}`}>
+              <span className={`room-ico ${cell?'':'equip'}`}>{roomIcon(room)}</span>
+              <span className="room-meta">
+                <span className="rn">{room.name}</span>
+                <span className="rd"><span className="room-code">{room.code}</span> {room.floor}</span>
+                {cell && <span className="qr-busy">{mine ? 'Už máte rezervováno' : `Obsazeno – ${tName(cell.teacherId)}`}{cell.note ? ` · ${cell.note}` : ''}</span>}
+              </span>
+              {!cell && <button className="btn sm primary" onClick={()=>onPick(room)}>Rezervovat</button>}
+            </div>
+          );
+        };
+
+        return (
+          <div className="overlay" onClick={onClose}>
+            <div className="modal" onClick={e=>e.stopPropagation()}>
+              <div className="modal-head">
+                <div>
+                  <div className="mh-t">Rychlá rezervace</div>
+                  <div className="mh-s">{capitalize(fullDateCz(parseISO(req.date)))} · {periodLabel(req.period)}</div>
+                  {req.note && <div className="quick-note">{req.note}</div>}
+                </div>
+                <button className="x-btn" onClick={onClose}><IconClose/></button>
+              </div>
+              <div className="modal-body">
+                {!loaded ? (
+                  <div className="helptext">Načítám…</div>
+                ) : equipment.length === 0 ? (
+                  <div className="helptext">V aplikaci nejsou žádné pomůcky pro hodiny.</div>
+                ) : (
+                  <>
+                    {req.floor !== null && !split && (
+                      <div className="helptext">Na požadovaném patře ({req.floor===0 ? 'přízemí' : `${req.floor}.`}) žádná pomůcka není – zobrazuji všechny.</div>
+                    )}
+                    {split && <div className="quick-group">{capitalize(floorLabel(req.floor))}</div>}
+                    {split && <div className="quick-list">{onFloor.map(row)}</div>}
+                    {split && others.length > 0 && <div className="quick-group">Jiná patra</div>}
+                    {others.length > 0 && <div className="quick-list">{others.map(row)}</div>}
+                  </>
+                )}
+              </div>
+              <div className="modal-foot">
+                <button className="btn" onClick={onClose}>Otevřít celý rozvrh</button>
               </div>
             </div>
           </div>
@@ -1507,6 +1612,14 @@
         const [creatingRoom,setCreatingRoom]=useState(false);
         const [dialog,setDialog]=useState(null);
 
+        // rychlá rezervace z odkazu (#rezervace?…) a co už je z databáze načtené
+        const [quick,setQuick]=useState(null);
+        const [roomsLoaded,setRoomsLoaded]=useState(false);
+        const [recurringLoaded,setRecurringLoaded]=useState(false);
+        // pro jaké datum jsou `reservations` opravdu načtené – po změně dne chvíli
+        // trvá, než dorazí data, a do té doby by vše vypadalo jako volné
+        const [reservationsLoadedFor,setReservationsLoadedFor]=useState(null);
+
         // stav techniky (samostatný systém tříd, nezávislý na rozvrhu)
         const [techRooms,setTechRooms]=useState([]);
         const [techItems,setTechItems]=useState([]);
@@ -1535,9 +1648,10 @@
           window.clearTimeout(showToast._t);
           showToast._t = window.setTimeout(()=>setToast(null), 6000);
         };
+        // spustí akci a chybu ukáže v toastu; vrací výsledek akce (při chybě false)
         const guard = async (fn, failMsg)=>{
-          try{ await fn(); }
-          catch(err){ console.error(err); showToast(`${failMsg} (${err?.message || err})`); }
+          try{ return await fn(); }
+          catch(err){ console.error(err); showToast(`${failMsg} (${err?.message || err})`); return false; }
         };
 
         const workweek = useMemo(()=>{
@@ -1627,6 +1741,7 @@
             const list = q.docs.map(d=>({id:d.id, ...d.data()}));
             list.sort((a,b)=> (a.order ?? 1e9) - (b.order ?? 1e9) || (a.name||'').localeCompare(b.name||'','cs'));
             setRooms(list);
+            setRoomsLoaded(true);
           });
           return ()=>unsub&&unsub();
         },[!!authUser, !!me, waitingApproval]);
@@ -1672,6 +1787,7 @@
               dayMap[r.roomId][r.period] = { id:d.id, teacherId:r.teacherId, note:r.note, createdBy:r.createdBy };
             });
             setReservations(dayMap);
+            setReservationsLoadedFor(selectedIso);
           });
           return ()=>unsub&&unsub();
         },[!!authUser, !!me, waitingApproval, selectedIso]);
@@ -1681,6 +1797,7 @@
           if(!authUser || !me || waitingApproval) return;
           const unsub = db.collection('recurring').onSnapshot(q=>{
             setRecurring(q.docs.map(d=>({id:d.id, ...d.data()})));
+            setRecurringLoaded(true);
           });
           return ()=>unsub&&unsub();
         },[!!authUser, !!me, waitingApproval]);
@@ -1979,16 +2096,17 @@
         }
 
         // CRUD reservations/recurring
+        // Vrací true, když se uložilo; false, když ne (kolize, zrušené potvrzení…).
         async function upsertReservation(dateIso, roomId, period, payload, editingRecurringId=null, existingSingleId=null){
           const userId = authUser?.uid || 'unknown';
           const teacherForSave = (me?.isAdmin) ? payload.teacherId : userId;
           if(cmpISO(dateIso, toISO(new Date())) < 0
              && !window.confirm('Vybraný den je v minulosti. Opravdu uložit rezervaci do minulosti?')){
-            return;
+            return false;
           }
           if(!me?.isAdmin && payload.repeat && payload.repeat.mode === 'until'){
             showToast('Opakování „do konce roku“ může vytvářet pouze administrátor. Zvol „Počet týdnů“, nebo požádej administrátora.');
-            return;
+            return false;
           }
           if(payload.repeat || editingRecurringId){
             const origSnap = editingRecurringId ? await db.collection('recurring').doc(editingRecurringId).get() : null;
@@ -2017,7 +2135,7 @@
               }
 
               const dates = seriesDates(rec.startISO, rec.endISO);
-              if(!await assertNoConflicts(dates, roomId, period, existingSingleId, editingRecurringId)) return;
+              if(!await assertNoConflicts(dates, roomId, period, existingSingleId, editingRecurringId)) return false;
 
               if(existingSingleId){ await db.collection('reservations').doc(existingSingleId).delete(); }
 
@@ -2028,7 +2146,7 @@
                 await db.collection('recurring').add(rec);
               }
             } else {
-              if(!await assertNoConflicts([dateIso], roomId, period, existingSingleId, editingRecurringId)) return;
+              if(!await assertNoConflicts([dateIso], roomId, period, existingSingleId, editingRecurringId)) return false;
               if(editingRecurringId){ await db.collection('recurring').doc(editingRecurringId).delete(); }
               const single = {
                 dateISO: dateIso, roomId, period,
@@ -2046,7 +2164,7 @@
               updatedAt: firebase.firestore.FieldValue.serverTimestamp(),
             });
           } else {
-            if(!await assertNoConflicts([dateIso], roomId, period, null, null)) return;
+            if(!await assertNoConflicts([dateIso], roomId, period, null, null)) return false;
             const single = {
               dateISO: dateIso, roomId, period,
               teacherId: teacherForSave,
@@ -2056,6 +2174,7 @@
             };
             await db.collection('reservations').add(single);
           }
+          return true;
         }
 
         async function clearReservation(dateIso, roomId, period){
@@ -2092,6 +2211,59 @@
             }
           } else {
             setDialog({dateIso:selectedIso, roomId:room.id, period});
+          }
+        };
+
+        // ---------- rychlá rezervace přes odkaz (#rezervace?…) ----------
+        // Odkaz otevírá rozšíření pro EduPage. Čte se při startu i při změně části
+        // za # (okno už může být otevřené – pak se stránka znovu nenačítá).
+        useEffect(()=>{
+          const readHash = ()=>{
+            const req = parseQuickHash(window.location.hash);
+            if(!req) return;
+            // Část za # hned smažeme: když učitel klikne znovu na stejnou hodinu,
+            // adresa se musí opět změnit, jinak by událost hashchange nenastala.
+            history.replaceState(null, '', location.pathname + location.search);
+            setQuick({ ...req, id: Date.now() });
+          };
+          readHash();
+          window.addEventListener('hashchange', readHash);
+          return ()=> window.removeEventListener('hashchange', readHash);
+        },[]);
+
+        // Požadavek zpracujeme, až je uživatel přihlášený, schválený a místnosti
+        // jsou načtené (přihlášení probíhá ve vyskakovacím okně, stav se neztratí).
+        const appReady = !!authUser && !!me && !waitingApproval && roomsLoaded;
+        useEffect(()=>{
+          if(!quick || !appReady) return;
+          if(quick.error){ showToast(quick.error); setQuick(null); return; }
+          setDialog(null); setDetail(null); setDateModal(false);
+          setView('rozvrh'); setViewMode('hours');
+          setSelectedDate(parseISO(quick.date));
+        },[quick?.id, appReady]);
+
+        // seznam pomůcek ukážeme, až jsou rezervace opravdu načtené pro požadovaný den
+        const quickLoaded = !!quick && selectedIso === quick.date
+          && reservationsLoadedFor === quick.date && recurringLoaded;
+
+        // „Rezervovat“ u pomůcky → běžný dialog rezervace s předvyplněnou poznámkou
+        const pickQuickRoom = (room)=>{
+          setDialog({ dateIso: quick.date, roomId: room.id, period: quick.period,
+                      defaultNote: quick.note, quickId: quick.id, quickPopup: quick.popup });
+        };
+
+        // Výsledek uložení z rychlé rezervace. Úspěch → hotovo (okno z rozšíření se
+        // samo zavře); neúspěch (kolize, zrušené potvrzení…) → znovu seznam pomůcek.
+        const quickRef = useRef(null);
+        quickRef.current = quick;
+        const quickSaved = (d, ok)=>{
+          if(!ok){ setQuick(q=> q && q.id===d.quickId ? {...q, saving:false} : q); return; }
+          setQuick(q=> q && q.id===d.quickId ? null : q);
+          showToast(d.quickPopup ? 'Rezervováno. Okno se za chvíli zavře.' : 'Rezervováno.', 'ok');
+          if(d.quickPopup){
+            // window.close() funguje jen u okna otevřeného skriptem (rozšířením);
+            // nezavírat, pokud mezitím přišel další požadavek z EduPage
+            window.setTimeout(()=>{ if(!quickRef.current) window.close(); }, 1500);
           }
         };
 
@@ -2622,7 +2794,13 @@
               editingRecurring={dialog?.editingRecurringId ? recurring.find(r=>r.id===dialog.editingRecurringId) : null}
               isAdmin={isAdmin}
               currentUserId={authUser?.uid}
-              onSave={(payload)=> guard(()=>upsertReservation(dialog.dateIso, dialog.roomId, dialog.period, payload, dialog?.editingRecurringId||null, dialog?.existingSingleId||null), 'Rezervaci se nepodařilo uložit')}
+              defaultNote={dialog?.defaultNote}
+              onSave={async (payload)=>{
+                const d = dialog;   // dialog se hned po kliknutí zavře, údaje si proto podržíme
+                if(d.quickId) setQuick(q=> q && q.id===d.quickId ? {...q, saving:true} : q);
+                const ok = await guard(()=>upsertReservation(d.dateIso, d.roomId, d.period, payload, d.editingRecurringId||null, d.existingSingleId||null), 'Rezervaci se nepodařilo uložit');
+                if(d.quickId) quickSaved(d, ok);
+              }}
               onDelete={()=> guard(async()=>{ if(dialog.editingRecurringId) await stopRecurring(dialog.editingRecurringId); else await clearReservation(dialog.dateIso, dialog.roomId, dialog.period); }, 'Rezervaci se nepodařilo smazat')}
               onSkip={()=> guard(()=>skipOccurrence(dialog.editingRecurringId, dialog.dateIso), 'Výskyt se nepodařilo zrušit')}
             />
@@ -2631,6 +2809,11 @@
             <RoomDialog open={!!creatingRoom} initial={null} onClose={()=>setCreatingRoom(false)}
               onSave={async (patch)=>{ await guard(()=>addRoom(patch), 'Místnost se nepodařilo přidat'); setCreatingRoom(false); }}/>
             <DetailModal detail={detail} onClose={()=>setDetail(null)} rooms={rooms} tName={tName}/>
+            {quick && !quick.error && !quick.saving && !dialog && appReady && (
+              <QuickDialog req={quick} rooms={rooms} planFor={planFor} tName={tName}
+                loaded={quickLoaded} currentUserId={authUser?.uid}
+                onPick={pickQuickRoom} onClose={()=>setQuick(null)}/>
+            )}
 
             <TechCellDialog
               open={!!techDialog}
